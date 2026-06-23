@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="el">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>WC 2026 Predictions League</title>
+  <link rel="stylesheet" href="style.css" />
+  <script defer src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <script defer src="app.js"></script>
+</head>
+<body>
+  <header class="hero">
+    <div>
+      <p class="eyebrow">World Cup 2026</p>
+      <h1>Predictions League</h1>
+      <p class="subtitle">Αποτελέσματα, βαθμολογία και προβλέψεις παικτών απευθείας από Google Sheets.</p>
+    </div>
+    <button id="refreshBtn">Ανανέωση</button>
+  </header>
+
+  <main>
+    <section class="status" id="status">Φόρτωση δεδομένων…</section>
+
+    <section class="cards" id="summaryCards"></section>
+
+    <section class="panel">
+      <div class="panel-title">
+        <h2>Βαθμολογία</h2>
+        <input id="playerSearch" placeholder="Αναζήτηση παίκτη…" />
+      </div>
+      <div class="table-wrap">
+        <table id="leaderboardTable"></table>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-title">
+        <h2>Αποτελέσματα αγώνων</h2>
+        <select id="groupFilter"><option value="">Όλοι οι όμιλοι</option></select>
+      </div>
+      <div class="table-wrap">
+        <table id="matchesTable"></table>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-title">
+        <h2>Προβλέψεις παίκτη</h2>
+        <select id="playerSelect"></select>
+      </div>
+      <div id="playerBox" class="player-box">Διάλεξε παίκτη για να δεις τις προβλέψεις του.</div>
+    </section>
+  </main>
+</body>
+</html>
