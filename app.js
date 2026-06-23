@@ -29,6 +29,15 @@ function initials(name){ return clean(name).split(/\s+/).slice(0,2).map(x=>x[0])
 function medal(rank){ return rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : `#${rank}`; }
 function norm(v){ return clean(v).replace(/\s+/g,' ').replace(/\.$/,'').toUpperCase(); }
 function validPick(v){ const x = clean(v); return x && x !== '-' && x.toLowerCase() !== 'none'; }
+function normalizeOutcome(v){
+  const x = norm(v).replace(',', '.');
+  if (x === '1' || x === '1.0') return '1';
+  if (x === '2' || x === '2.0') return '2';
+  if (x === 'X' || x === 'Χ') return 'X';
+  return '';
+}
+function isPlayedResult(v){ return !!normalizeOutcome(v); }
+function sameOutcome(a, b){ const aa = normalizeOutcome(a), bb = normalizeOutcome(b); return !!aa && aa === bb; }
 
 function csvUrl(sheetName) {
   const base = `https://docs.google.com/spreadsheets/d/${CONFIG.spreadsheetId}/gviz/tq`;
@@ -186,7 +195,7 @@ async function loadPredictionStats(force=false){
 }
 
 function renderCards() {
-  const played = state.matches.filter(m => m.result).length;
+  const played = state.matches.filter(m => isPlayedResult(m.result)).length;
   const top = state.leaderboard[0];
   const maxPoints = Math.max(0, ...state.leaderboard.map(x => x.points));
   const groups = new Set(state.matches.map(m => m.group).filter(Boolean)).size;
@@ -230,7 +239,7 @@ function renderMovers(){
 }
 
 function renderQuickStats(){
-  const played = state.matches.filter(m=>m.result).length;
+  const played = state.matches.filter(m=>isPlayedResult(m.result)).length;
   const top = state.leaderboard[0];
   const tiedFirst = state.leaderboard.filter(x => top && x.points === top.points).length;
   const stats = state.predictionStats;
@@ -262,7 +271,7 @@ function matchInsights(match){
       if (norm((r || [])[0]) === norm(match.match)) {
         const pts = Number(clean((r || [])[2])) || 0;
         if (pts > 0) points.push({ player, pts, pred: clean((r || [])[1]) });
-        if (clean((r || [])[1]) === clean(match.result) && match.result) exact.push(player);
+        if (sameOutcome((r || [])[1], match.result)) exact.push(player);
         break;
       }
     }
@@ -270,7 +279,7 @@ function matchInsights(match){
   return { exact, points };
 }
 function renderRecentMatches(){
-  const recent = state.matches.filter(m => m.result).slice(-6).reverse();
+  const recent = state.matches.filter(m => isPlayedResult(m.result)).slice(-6).reverse();
   $('recentMatches').innerHTML = recent.map((m,idx) => {
     const hasSheets = Object.keys(state.playerSheets).length > 0;
     const ins = hasSheets ? matchInsights(m) : { exact:[], points:[] };
