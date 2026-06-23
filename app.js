@@ -38,6 +38,15 @@ function normalizeOutcome(v){
 }
 function isPlayedResult(v){ return !!normalizeOutcome(v); }
 function sameOutcome(a, b){ const aa = normalizeOutcome(a), bb = normalizeOutcome(b); return !!aa && aa === bb; }
+function resultBreakdown(){
+  const out = { '1':0, 'X':0, '2':0, other:0, played:0, total: state.matches.length };
+  for (const m of state.matches) {
+    const r = normalizeOutcome(m.result);
+    if (r) { out.played++; out[r] = (out[r] || 0) + 1; }
+    else if (clean(m.result)) out.other++;
+  }
+  return out;
+}
 
 function csvUrl(sheetName) {
   const base = `https://docs.google.com/spreadsheets/d/${CONFIG.spreadsheetId}/gviz/tq`;
@@ -195,7 +204,8 @@ async function loadPredictionStats(force=false){
 }
 
 function renderCards() {
-  const played = state.matches.filter(m => isPlayedResult(m.result)).length;
+  const rb = resultBreakdown();
+  const played = rb.played;
   const top = state.leaderboard[0];
   const maxPoints = Math.max(0, ...state.leaderboard.map(x => x.points));
   const groups = new Set(state.matches.map(m => m.group).filter(Boolean)).size;
@@ -239,13 +249,15 @@ function renderMovers(){
 }
 
 function renderQuickStats(){
-  const played = state.matches.filter(m=>isPlayedResult(m.result)).length;
+  const rb = resultBreakdown();
+  const played = rb.played;
   const top = state.leaderboard[0];
   const tiedFirst = state.leaderboard.filter(x => top && x.points === top.points).length;
   const stats = state.predictionStats;
   const favChampion = stats ? topEntries(stats.maps.champions, 1)[0] : null;
   $('quickStats').innerHTML = [
     ['Αγώνες', `${played}/${state.matches.length}`],
+    ['Αποτελέσματα', `1:${rb['1']} · X:${rb['X']} · 2:${rb['2']}`],
     ['Ισοβαθμία στην κορυφή', tiedFirst || '-'],
     ['Δημοφιλής πρωταθλήτρια', favChampion ? `${favChampion[0]} (${favChampion[1]})` : 'Φόρτωση…']
   ].map(([label,value])=>`<div class="stat-line"><span>${esc(label)}</span><strong>${esc(value)}</strong></div>`).join('');
@@ -283,7 +295,7 @@ function renderRecentMatches(){
   $('recentMatches').innerHTML = recent.map((m,idx) => {
     const hasSheets = Object.keys(state.playerSheets).length > 0;
     const ins = hasSheets ? matchInsights(m) : { exact:[], points:[] };
-    return `<button class="match-card match-button" onclick="openMatchModal(${idx})"><div class="match-meta">${esc(m.date)} · ${esc(m.group || '-')}</div><div><div class="match-title">${esc(m.match)}</div><small>${hasSheets ? `${ins.points.length} πήραν βαθμούς · ${ins.exact.length} ακριβές σκορ` : 'πατήστε μετά τη φόρτωση στατιστικών'}</small></div><div class="score-pill">${esc(m.result)}</div></button>`;
+    return `<button class="match-card match-button" onclick="openMatchModal(${idx})"><div class="match-meta">${esc(m.date)} · ${esc(m.group || '-')}</div><div><div class="match-title">${esc(m.match)}</div><small>${hasSheets ? `${ins.points.length}/${CONFIG.players.length} σωστές προβλέψεις` : 'πατήστε μετά τη φόρτωση στατιστικών'}</small></div><div class="score-pill">${esc(m.result)}</div></button>`;
   }).join('');
   window.__recentMatches = recent;
 }
@@ -408,7 +420,7 @@ function openMatchModal(idx){
   if (!m) return;
   const ins = matchInsights(m);
   const best = ins.points.sort((a,b)=>b.pts-a.pts || a.player.localeCompare(b.player,'el')).slice(0,20);
-  openModal(`<p class="small-title">Match insights</p><h2>${esc(m.match)}</h2><div class="score-big">${esc(m.result || '-')}</div><div class="mini-profile"><div><span>Πήραν βαθμούς</span><b>${ins.points.length}</b></div><div><span>Ακριβές σκορ</span><b>${ins.exact.length}</b></div><div><span>Όμιλος</span><b>${esc(m.group || '-')}</b></div><div><span>Ημερομηνία</span><b>${esc(m.date || '-')}</b></div></div><h3>Best predictors</h3><div class="picker-grid">${best.map(x=>`<button onclick="closeModal();selectPlayer('${esc(x.player)}')">${esc(x.player)} · ${x.pts} pts · ${esc(x.pred)}</button>`).join('') || '<em>Τα insights θα εμφανιστούν όταν φορτωθούν τα φύλλα παικτών.</em>'}</div>`);
+  openModal(`<p class="small-title">Match insights</p><h2>${esc(m.match)}</h2><div class="score-big">${esc(m.result || '-')}</div><div class="mini-profile"><div><span>Σωστές προβλέψεις</span><b>${ins.points.length}/${CONFIG.players.length}</b></div><div><span>Αποτέλεσμα</span><b>${esc(normalizeOutcome(m.result) || '-')}</b></div><div><span>Όμιλος</span><b>${esc(m.group || '-')}</b></div><div><span>Ημερομηνία</span><b>${esc(m.date || '-')}</b></div></div><h3>Παίκτες με σωστή πρόβλεψη</h3><div class="picker-grid">${best.map(x=>`<button onclick="closeModal();selectPlayer('${esc(x.player)}')">${esc(x.player)} · ${x.pts} pts · πρόβλεψη ${esc(x.pred)}</button>`).join('') || '<em>Τα insights θα εμφανιστούν όταν φορτωθούν τα φύλλα παικτών.</em>'}</div>`);
 }
 window.openMatchModal = openMatchModal;
 
