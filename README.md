@@ -1,16 +1,27 @@
-# WC2026 Predictions League - Version 3
+# WC 2026 Predictions League
 
-Professional GitHub Pages dashboard for the WC2026 prediction game.
+Static GitHub Pages dashboard connected to the public Google Sheet.
 
-## Update instructions
+## Version 4
 
-Upload these 4 files to the root of your GitHub repository:
+Includes:
 
-- index.html
-- style.css
-- app.js
-- README.md
+- Live leaderboard from `ΑΠΟΤΕΛΕΣΜΑΤΑ`
+- Top 3 podium
+- Match center
+- Player profile
+- Prediction analytics / statistics from the 32 player sheets
+- Ignores `stats` and `stats-2`
 
-Then commit changes and refresh the GitHub Pages site with Ctrl + F5.
+## Statistics section
 
-The site reads data from the public Google Sheet and ignores stats / stats-2.
+The statistics are calculated directly from the players' sheets:
+
+- Πρωταθλήτρια / Winner (`ΝΙΚΗΤΗΣ`)
+- 1ος σκόρερ (`1ος ΣΚΟΡΕΡ`)
+- Τελικός (`ΝΗΜ 1`, `ΝΗΜ 2`)
+- Φιναλίστ
+- Ημιτελικά / στους 4 (`ΣΤΟΥΣ 4` section)
+- Στους 8 (`ΣΤΟΥΣ 8` section)
+
+Upload `index.html`, `style.css`, `app.js`, and `README.md` to the GitHub repository root.

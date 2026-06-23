@@ -21,6 +21,7 @@
         <a href="#top" class="nav-link active">Αρχική</a>
         <a href="#ranking" class="nav-link">Κατάταξη</a>
         <a href="#matches" class="nav-link">Αγώνες</a>
+        <a href="#stats" class="nav-link">Στατιστικά</a>
         <a href="#players" class="nav-link">Παίκτες</a>
       </nav>
       <div class="side-card">
@@ -60,7 +61,7 @@
           <section id="matches" class="panel">
             <div class="panel-title">
               <div>
-                <p class="small-title">Αγώνες</p>
+                <p class="small-title">Match Center</p>
                 <h2>Τελευταία αποτελέσματα</h2>
               </div>
               <select id="groupFilter"><option value="">Όλοι οι όμιλοι</option></select>
@@ -83,13 +84,62 @@
           <section class="panel compact-panel">
             <div class="panel-title">
               <div>
-                <p class="small-title">Stats</p>
+                <p class="small-title">Quick stats</p>
                 <h2>Σύνοψη</h2>
               </div>
             </div>
             <div id="quickStats" class="quick-stats"></div>
           </section>
         </aside>
+      </section>
+
+      <section id="stats" class="panel full-panel stats-panel">
+        <div class="panel-title">
+          <div>
+            <p class="small-title">Prediction analytics</p>
+            <h2>Στατιστικά προβλέψεων</h2>
+          </div>
+          <button id="statsRefreshBtn" class="ghost-btn">↻ Φόρτωση στατιστικών</button>
+        </div>
+        <div id="statsStatus" class="stats-status">Τα στατιστικά υπολογίζονται από τα φύλλα των 32 παικτών, όχι από τα φύλλα stats / stats-2.</div>
+        <div class="stats-grid">
+          <div class="stat-card big-stat">
+            <div class="stat-icon">🏆</div>
+            <div>
+              <p class="small-title">Πρωταθλήτρια</p>
+              <h3>Πιο δημοφιλής επιλογή</h3>
+              <div id="championStats" class="bar-list muted-box">Φόρτωση…</div>
+            </div>
+          </div>
+          <div class="stat-card big-stat">
+            <div class="stat-icon">⚽</div>
+            <div>
+              <p class="small-title">1ος σκόρερ</p>
+              <h3>Πιο δημοφιλής επιλογή</h3>
+              <div id="scorerStats" class="bar-list muted-box">Φόρτωση…</div>
+            </div>
+          </div>
+          <div class="stat-card">
+            <p class="small-title">Τελικός</p>
+            <h3>Πιθανότερα ζευγάρια τελικού</h3>
+            <div id="finalStats" class="bar-list muted-box">Φόρτωση…</div>
+          </div>
+          <div class="stat-card">
+            <p class="small-title">Φιναλίστ</p>
+            <h3>Ομάδες που εμφανίζονται στον τελικό</h3>
+            <div id="finalistStats" class="bar-list muted-box">Φόρτωση…</div>
+          </div>
+          <div class="stat-card">
+            <p class="small-title">Ημιτελικά</p>
+            <h3>Πιο συχνές ομάδες στους 4</h3>
+            <div id="semiStats" class="bar-list muted-box">Φόρτωση…</div>
+          </div>
+          <div class="stat-card">
+            <p class="small-title">Στους 8</p>
+            <h3>Πιο συχνές ομάδες στα προημιτελικά</h3>
+            <div id="quarterStats" class="bar-list muted-box">Φόρτωση…</div>
+          </div>
+        </div>
       </section>
 
       <section class="panel full-panel">
@@ -105,7 +155,7 @@
         </div>
       </section>
 
-      <section class="panel full-panel">
+      <section id="players" class="panel full-panel">
         <div class="panel-title">
           <div>
             <p class="small-title">Player profile</p>
