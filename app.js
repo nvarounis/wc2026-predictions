@@ -9,6 +9,18 @@ const CONFIG = {
 
 const $ = id => document.getElementById(id);
 let state = { matches: [], leaderboard: [], predictionStats: null, playerSheets: {} };
+let charts = {};
+const FIXED = {
+  round32: [3, 38],
+  round16: [40, 55],
+  quarters: [57, 64],
+  semis: [66, 69],
+  semiWinners: [71, 72],
+  finalTeams: [74, 75],
+  thirdPlace: 76,
+  champion: 77,
+  scorer: 78
+};
 
 function clean(v) { return (v ?? '').toString().replace(/\uFEFF/g, '').trim(); }
 function esc(v) { return clean(v).replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
@@ -93,19 +105,31 @@ function picksBySection(rows, startLabel, endLabel){
 }
 function finalPairLabel(a, b){ return [clean(a), clean(b)].filter(Boolean).sort((x,y)=>x.localeCompare(y,'el')).join(' — '); }
 
+function eCell(rows, rowNumber){ return clean((rows[rowNumber - 1] || [])[4]); }
+function valuesE(rows, start, end){
+  const out = [];
+  for (let r = start; r <= end; r++) {
+    const v = eCell(rows, r);
+    if (validPick(v)) out.push(v);
+  }
+  return out;
+}
 function parsePlayerAnalytics(player, rows){
-  const champion = findPick(rows, ['ΝΙΚΗΤΗΣ']);
-  const scorer = findPick(rows, ['1ος ΣΚΟΡΕΡ', '1ΟΣ ΣΚΟΡΕΡ']);
-  const finalists = picksByLabels(rows, ['ΝΗΜ 1', 'ΝΗΜ 2']);
-  const semiFinalists = picksBySection(rows, 'ΣΤΟΥΣ 4', 'ΜΙΚΡΟΣ ΤΕΛΙΚΟΣ');
-  const quarterFinalists = picksBySection(rows, 'ΣΤΟΥΣ 8', 'ΣΤΟΥΣ 4');
+  const champion = eCell(rows, FIXED.champion) || findPick(rows, ['ΝΙΚΗΤΗΣ']);
+  const scorer = eCell(rows, FIXED.scorer) || findPick(rows, ['1ος ΣΚΟΡΕΡ', '1ΟΣ ΣΚΟΡΕΡ']);
+  const round32 = valuesE(rows, ...FIXED.round32);
+  const round16 = valuesE(rows, ...FIXED.round16);
+  const quarterFinalists = valuesE(rows, ...FIXED.quarters);
+  const semiFinalists = valuesE(rows, ...FIXED.semis);
+  const semiWinners = valuesE(rows, ...FIXED.semiWinners);
+  const finalists = valuesE(rows, ...FIXED.finalTeams);
   const finalPair = finalists.length >= 2 ? finalPairLabel(finalists[0], finalists[1]) : '';
-  const thirdPlace = findPick(rows, ['ΝΙΚΗΤΗΣ ΜΙΚΡΟΥ ΤΕΛΙΚΟΥ']);
-  return { player, champion, scorer, finalists, finalPair, semiFinalists, quarterFinalists, thirdPlace };
+  const thirdPlace = eCell(rows, FIXED.thirdPlace) || findPick(rows, ['ΝΙΚΗΤΗΣ ΜΙΚΡΟΥ ΤΕΛΙΚΟΥ']);
+  return { player, champion, scorer, round32, round16, quarterFinalists, semiFinalists, semiWinners, finalists, finalPair, thirdPlace };
 }
 
 function aggregateAnalytics(analytics){
-  const maps = { champions:new Map(), scorers:new Map(), finalists:new Map(), finalPairs:new Map(), semis:new Map(), quarters:new Map(), thirdPlaces:new Map() };
+  const maps = { champions:new Map(), scorers:new Map(), finalists:new Map(), finalPairs:new Map(), semis:new Map(), quarters:new Map(), round16:new Map(), round32:new Map(), semiWinners:new Map(), thirdPlaces:new Map() };
   for (const a of analytics) {
     addCount(maps.champions, a.champion);
     addCount(maps.scorers, a.scorer);
@@ -113,7 +137,10 @@ function aggregateAnalytics(analytics){
     addCount(maps.thirdPlaces, a.thirdPlace);
     a.finalists.forEach(x => addCount(maps.finalists, x));
     a.semiFinalists.forEach(x => addCount(maps.semis, x));
+    a.semiWinners.forEach(x => addCount(maps.semiWinners, x));
     a.quarterFinalists.forEach(x => addCount(maps.quarters, x));
+    a.round16.forEach(x => addCount(maps.round16, x));
+    a.round32.forEach(x => addCount(maps.round32, x));
   }
   return { analytics, maps, loadedPlayers: analytics.length };
 }
@@ -168,6 +195,16 @@ function renderTopTen(){
   }).join('');
 }
 
+function renderMovers(){
+  const el = $('moversBox');
+  if (!el) return;
+  const prev = JSON.parse(localStorage.getItem('wc2026Ranks') || '{}');
+  const movers = state.leaderboard.map(x => ({...x, prev: prev[x.player], delta: prev[x.player] ? prev[x.player] - x.rank : 0}))
+    .filter(x => x.delta !== 0).sort((a,b)=>Math.abs(b.delta)-Math.abs(a.delta)).slice(0,6);
+  el.innerHTML = movers.length ? movers.map(x => `<div class="mover-row ${x.delta>0?'up':'down'}"><span>${x.delta>0?'↑':'↓'} ${Math.abs(x.delta)}</span><b>${esc(x.player)}</b><small>#${x.rank}</small></div>`).join('') : '<div class="empty-state">Οι μεταβολές θα εμφανιστούν μετά την επόμενη ενημέρωση.</div>';
+  localStorage.setItem('wc2026Ranks', JSON.stringify(Object.fromEntries(state.leaderboard.map(x=>[x.player,x.rank]))));
+}
+
 function renderQuickStats(){
   const played = state.matches.filter(m=>m.result).length;
   const top = state.leaderboard[0];
@@ -215,15 +252,76 @@ function renderBarList(containerId, entries, total, empty='Δεν υπάρχου
   </div>`).join('');
 }
 
+function chartDataFromEntries(entries){
+  return { labels: entries.map(x => x[0]), data: entries.map(x => x[1]) };
+}
+function makeChart(canvasId, entries, type='bar'){
+  const canvas = $(canvasId);
+  if (!canvas || typeof Chart === 'undefined') return;
+  if (charts[canvasId]) charts[canvasId].destroy();
+  const d = chartDataFromEntries(entries);
+  charts[canvasId] = new Chart(canvas, {
+    type,
+    data: { labels: d.labels, datasets: [{ label: 'Επιλογές', data: d.data, borderWidth: 1, borderRadius: 10 }] },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      indexAxis: type === 'bar' ? 'y' : 'x',
+      plugins: { legend: { display:false }, tooltip: { callbacks: { label: ctx => `${ctx.parsed.x ?? ctx.parsed.y} επιλογές` } } },
+      scales: {
+        x: { ticks: { color:'#c8d7ee', precision:0 }, grid: { color:'rgba(255,255,255,.08)' } },
+        y: { ticks: { color:'#c8d7ee' }, grid: { color:'rgba(255,255,255,.05)' } }
+      }
+    }
+  });
+}
+function pct(count, total){ return total ? Math.round((count / total) * 100) : 0; }
+function renderConsensusCards(){
+  if (!state.predictionStats) return;
+  const { maps, loadedPlayers } = state.predictionStats;
+  const champion = topEntries(maps.champions,1)[0];
+  const scorer = topEntries(maps.scorers,1)[0];
+  const finalist = topEntries(maps.finalists,1)[0];
+  const semi = topEntries(maps.semis,1)[0];
+  const cards = [
+    ['🏆', 'Consensus champion', champion ? `${champion[0]}` : '-', champion ? `${champion[1]}/${loadedPlayers} παίκτες · ${pct(champion[1], loadedPlayers)}%` : ''],
+    ['⚽', 'Consensus top scorer', scorer ? `${scorer[0]}` : '-', scorer ? `${scorer[1]}/${loadedPlayers} παίκτες · ${pct(scorer[1], loadedPlayers)}%` : ''],
+    ['🥇', 'Most common finalist', finalist ? `${finalist[0]}` : '-', finalist ? `${finalist[1]}/${loadedPlayers*2} επιλογές τελικού` : ''],
+    ['🔥', 'Strongest semi pick', semi ? `${semi[0]}` : '-', semi ? `${semi[1]}/${loadedPlayers*4} επιλογές ημιτελικών` : '']
+  ];
+  const el = $('consensusCards');
+  if (el) el.innerHTML = cards.map(([icon,label,value,note]) => `<div class="consensus-card"><div class="consensus-icon">${icon}</div><div><p>${esc(label)}</p><h3>${esc(value)}</h3><small>${esc(note)}</small></div></div>`).join('');
+}
+function renderDarkHorses(){
+  const el = $('darkHorses');
+  if (!el || !state.predictionStats) return;
+  const { maps } = state.predictionStats;
+  const allChampions = [...maps.champions.entries()].sort((a,b)=>a[1]-b[1] || a[0].localeCompare(b[0], 'el')).filter(x => x[1] <= 2);
+  const rareSemis = [...maps.semis.entries()].sort((a,b)=>a[1]-b[1] || a[0].localeCompare(b[0], 'el')).filter(x => x[1] <= 3).slice(0,8);
+  el.innerHTML = `<div class="dark-card"><p class="small-title">Dark horses</p><h3>Λιγότερο δημοφιλείς αλλά ζωντανές επιλογές</h3><div class="chip-list">${allChampions.slice(0,8).map(([x,c])=>`<span>${esc(x)} · ${c}</span>`).join('') || '<em>Δεν υπάρχουν σπάνιες επιλογές πρωταθλήτριας.</em>'}</div></div>` +
+    `<div class="dark-card"><p class="small-title">Rare semi-final picks</p><h3>Ομάδες που λίγοι βλέπουν στους 4</h3><div class="chip-list">${rareSemis.map(([x,c])=>`<span>${esc(x)} · ${c}</span>`).join('') || '<em>Δεν υπάρχουν σπάνιες επιλογές ημιτελικών.</em>'}</div></div>`;
+}
 function renderPredictionStats(){
   if (!state.predictionStats) return;
   const { maps, loadedPlayers } = state.predictionStats;
-  renderBarList('championStats', topEntries(maps.champions, 8), loadedPlayers);
-  renderBarList('scorerStats', topEntries(maps.scorers, 8), loadedPlayers);
-  renderBarList('finalStats', topEntries(maps.finalPairs, 8), loadedPlayers, 'Δεν έχουν συμπληρωθεί ζευγάρια τελικού.');
+  const championEntries = topEntries(maps.champions, 8);
+  const scorerEntries = topEntries(maps.scorers, 8);
+  const finalPairEntries = topEntries(maps.finalPairs, 8);
+  const semiEntries = topEntries(maps.semis, 10);
+  const quarterEntries = topEntries(maps.quarters, 10);
+  renderBarList('championStats', championEntries, loadedPlayers);
+  renderBarList('scorerStats', scorerEntries, loadedPlayers);
+  renderBarList('finalStats', finalPairEntries, loadedPlayers, 'Δεν έχουν συμπληρωθεί ζευγάρια τελικού.');
   renderBarList('finalistStats', topEntries(maps.finalists, 10), loadedPlayers * 2);
-  renderBarList('semiStats', topEntries(maps.semis, 12), loadedPlayers * 4);
-  renderBarList('quarterStats', topEntries(maps.quarters, 12), loadedPlayers * 8);
+  renderBarList('semiStats', semiEntries, loadedPlayers * 4);
+  renderBarList('quarterStats', quarterEntries, loadedPlayers * 8);
+  makeChart('championChart', championEntries);
+  makeChart('scorerChart', scorerEntries);
+  makeChart('finalChart', finalPairEntries);
+  makeChart('semiChart', semiEntries);
+  makeChart('quarterChart', quarterEntries);
+  renderConsensusCards();
+  renderDarkHorses();
   renderQuickStats();
 }
 
@@ -233,7 +331,9 @@ function profileAnalyticsHtml(sheetName, analytics){
     <div><span>🏆 Πρωταθλήτρια</span><b>${esc(analytics.champion || '-')}</b></div>
     <div><span>⚽ 1ος σκόρερ</span><b>${esc(analytics.scorer || '-')}</b></div>
     <div><span>🏁 Τελικός</span><b>${esc(analytics.finalPair || '-')}</b></div>
+    <div><span>🥉 Μικρός τελικός</span><b>${esc(analytics.thirdPlace || '-')}</b></div>
     <div><span>🔥 Ημιτελικά</span><b>${esc(analytics.semiFinalists.join(', ') || '-')}</b></div>
+    <div><span>🎯 Στους 8</span><b>${esc(analytics.quarterFinalists.join(', ') || '-')}</b></div>
   </div>`;
 }
 
@@ -271,7 +371,7 @@ async function load() {
   try {
     const rows = await fetchSheet(CONFIG.resultsSheet);
     Object.assign(state, parseResults(rows));
-    renderCards(); renderPodium(); renderTopTen(); renderLeaderboard(); renderGroupFilter(); renderMatches(); renderPlayerSelect(); renderQuickStats();
+    renderCards(); renderPodium(); renderTopTen(); renderMovers(); renderLeaderboard(); renderGroupFilter(); renderMatches(); renderPlayerSelect(); renderQuickStats();
     $('status').textContent = `Τελευταία ενημέρωση: ${new Date().toLocaleString('el-GR')}`;
     loadPredictionStats(false).catch(err => { $('statsStatus').innerHTML = `<span class="warn">Δεν φορτώθηκαν τα στατιστικά: ${esc(err.message)}</span>`; });
   } catch (err) { $('status').innerHTML = `<span class="warn">${esc(err.message)}</span><br>Πιθανή αιτία: το Google Sheet δεν έχει γίνει Publish to web ή το φύλλο «ΑΠΟΤΕΛΕΣΜΑΤΑ» δεν είναι δημοσιευμένο.`; }

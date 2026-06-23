@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>WC 2026 Predictions League</title>
   <link rel="stylesheet" href="style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
   <script defer src="app.js"></script>
 </head>
 <body>
@@ -22,6 +23,7 @@
         <a href="#ranking" class="nav-link">Κατάταξη</a>
         <a href="#matches" class="nav-link">Αγώνες</a>
         <a href="#stats" class="nav-link">Στατιστικά</a>
+        <a href="#wisdom" class="nav-link">Wisdom</a>
         <a href="#players" class="nav-link">Παίκτες</a>
       </nav>
       <div class="side-card">
@@ -90,6 +92,16 @@
             </div>
             <div id="quickStats" class="quick-stats"></div>
           </section>
+
+          <section class="panel compact-panel">
+            <div class="panel-title">
+              <div>
+                <p class="small-title">Movers</p>
+                <h2>Μεταβολές</h2>
+              </div>
+            </div>
+            <div id="moversBox" class="movers-box"></div>
+          </section>
         </aside>
       </section>
 
@@ -101,7 +113,19 @@
           </div>
           <button id="statsRefreshBtn" class="ghost-btn">↻ Φόρτωση στατιστικών</button>
         </div>
-        <div id="statsStatus" class="stats-status">Τα στατιστικά υπολογίζονται από τα φύλλα των 32 παικτών, όχι από τα φύλλα stats / stats-2.</div>
+        <div id="statsStatus" class="stats-status">Τα στατιστικά υπολογίζονται από τα πραγματικά κελιά των φύλλων παικτών: E3:E38, E40:E55, E57:E64, E66:E69, E74:E78.</div>
+
+        <div class="chart-grid">
+          <div class="chart-card">
+            <div class="chart-head"><span>🏆</span><div><p class="small-title">Champion picks</p><h3>Πρωταθλήτρια</h3></div></div>
+            <canvas id="championChart" height="230"></canvas>
+          </div>
+          <div class="chart-card">
+            <div class="chart-head"><span>⚽</span><div><p class="small-title">Top scorer picks</p><h3>Πρώτος σκόρερ</h3></div></div>
+            <canvas id="scorerChart" height="230"></canvas>
+          </div>
+        </div>
+
         <div class="stats-grid">
           <div class="stat-card big-stat">
             <div class="stat-icon">🏆</div>
@@ -140,6 +164,31 @@
             <div id="quarterStats" class="bar-list muted-box">Φόρτωση…</div>
           </div>
         </div>
+      </section>
+
+      <section id="wisdom" class="panel full-panel wisdom-panel">
+        <div class="panel-title">
+          <div>
+            <p class="small-title">Wisdom of the crowd</p>
+            <h2>Η συλλογική πρόβλεψη της παρέας</h2>
+          </div>
+        </div>
+        <div id="consensusCards" class="consensus-grid"></div>
+        <div class="chart-grid three">
+          <div class="chart-card">
+            <div class="chart-head"><span>🥇</span><div><p class="small-title">Final pairings</p><h3>Ζευγάρια τελικού</h3></div></div>
+            <canvas id="finalChart" height="240"></canvas>
+          </div>
+          <div class="chart-card">
+            <div class="chart-head"><span>🔥</span><div><p class="small-title">Semi finalists</p><h3>Ομάδες στους 4</h3></div></div>
+            <canvas id="semiChart" height="240"></canvas>
+          </div>
+          <div class="chart-card">
+            <div class="chart-head"><span>🎯</span><div><p class="small-title">Quarter finalists</p><h3>Ομάδες στους 8</h3></div></div>
+            <canvas id="quarterChart" height="240"></canvas>
+          </div>
+        </div>
+        <div id="darkHorses" class="dark-horses"></div>
       </section>
 
       <section class="panel full-panel">
