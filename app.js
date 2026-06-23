@@ -6,156 +6,29 @@ const CONFIG = {
     'ΑΝΑΣΤΑΣΙΑΔΗΣ','ΑΡΒΑΝΙΤΟΠΟΥΛΟΣ','ΒΑΡΟΥΝΗΣ','ΒΕΛΟΥΔΟΣ 1','ΒΕΛΟΥΔΟΣ 2','ΓΚΟΥΛΟΥΣΗΣ Ν','ΓΚΟΥΛΟΥΣΗΣ Χ','ΔΗΜΑ','ΖΑΪΡΗΣ Γ','ΖΑΪΡΗΣ Ν','ΖΙΑΚΑΣ','ΗΛΙΟΠΟΥΛΟΣ','ΚΑΤΣΑΪΤΗΣ','ΚΕΛΛΑΡΗΣ Β','ΚΕΛΛΑΡΗΣ Δ','ΚΟΥΤΟΥΛΑΣ','ΚΟΥΤΣΟΥΦΛΑΚΗΣ','ΛΟΥΒΙΤΑΚΗΣ','ΜΑΡ','ΜΗΛΑΣ','ΝΤΑΒΛΟΥΡΟΣ','ΠΡΟΕΣΤΟΣ','ΣΒΟΛΟΠΟΥΛΟΣ Λ','ΣΒΟΛΟΠΟΥΛΟΣ Π','ΣΒΟΛΟΠΟΥΛΟΣ Τ','ΣΚΙΑΣ','ΣΚΟΥΡΤΑΣ Γ','ΣΚΟΥΡΤΑΣ Φ','ΣΦΗΚΑΣ','ΤΡΙΑΝΤΑΦΥΛΛΑΚΗΣ','ΤΣΟΓΚΑΣ','ΧΑΤΖΗΤΙΜΠΑΣ'
   ]
 };
-
 const $ = id => document.getElementById(id);
 let state = { matches: [], leaderboard: [] };
-
-function clean(v) { return (v ?? '').toString().replace(/\uFEFF/g, '').trim(); }
-function esc(v) { return clean(v).replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
-function isIgnored(name) { return CONFIG.ignoredSheets.map(x => x.toLowerCase()).includes(clean(name).toLowerCase()); }
-
-function csvUrl(sheetName) {
-  const base = `https://docs.google.com/spreadsheets/d/${CONFIG.spreadsheetId}/gviz/tq`;
-  const params = new URLSearchParams({ tqx: 'out:csv', sheet: sheetName, cacheBust: Date.now().toString() });
-  return `${base}?${params.toString()}`;
-}
-
-function parseCsv(text) {
-  const rows = [];
-  let row = [], cell = '', inQuotes = false;
-  for (let i = 0; i < text.length; i++) {
-    const ch = text[i], next = text[i + 1];
-    if (ch === '"') {
-      if (inQuotes && next === '"') { cell += '"'; i++; }
-      else inQuotes = !inQuotes;
-    } else if (ch === ',' && !inQuotes) {
-      row.push(cell); cell = '';
-    } else if ((ch === '\n' || ch === '\r') && !inQuotes) {
-      if (ch === '\r' && next === '\n') i++;
-      row.push(cell); rows.push(row); row = []; cell = '';
-    } else {
-      cell += ch;
-    }
-  }
-  if (cell.length || row.length) { row.push(cell); rows.push(row); }
-  return rows;
-}
-
-async function fetchSheet(sheetName) {
-  const res = await fetch(csvUrl(sheetName), { cache: 'no-store' });
-  if (!res.ok) throw new Error(`Δεν μπόρεσα να διαβάσω το φύλλο «${sheetName}».`);
-  const text = await res.text();
-  if (text.includes('<!DOCTYPE html') || text.includes('<html')) throw new Error(`Το Google Sheet δεν επιστρέφει CSV για το φύλλο «${sheetName}».`);
-  return parseCsv(text);
-}
-
-function parseResults(rows) {
-  const matches = [];
-  for (let i = 2; i < rows.length; i++) {
-    const r = rows[i] || [];
-    const date = clean(r[0]), time = clean(r[1]), group = clean(r[2]), match = clean(r[3]), result = clean(r[4]), slot = clean(r[5]);
-    if (match && !match.toUpperCase().includes('ΒΑΘΜΟΛΟΓΙΑ')) matches.push({ date, time, group, match, result, slot });
-  }
-
-  // Στο αρχείο σου η καθαρή τελική κατάταξη βρίσκεται στις στήλες R:T.
-  // Αν λείπει, γίνεται fallback στις στήλες I:K.
-  let leaderboard = [];
-  for (let i = 1; i < rows.length; i++) {
-    const r = rows[i] || [];
-    const rank = clean(r[17]), player = clean(r[18]), points = clean(r[19]);
-    if (rank && player && !isIgnored(player)) leaderboard.push({ rank, player, points: Number(points) || 0 });
-  }
-  if (!leaderboard.length) {
-    for (let i = 1; i < rows.length; i++) {
-      const r = rows[i] || [];
-      const rank = clean(r[8]), player = clean(r[9]), points = clean(r[10]);
-      if (rank && player && !isIgnored(player)) leaderboard.push({ rank, player, points: Number(points) || 0 });
-    }
-  }
-  leaderboard = leaderboard
-    .filter(x => CONFIG.players.includes(x.player))
-    .sort((a, b) => (Number(a.rank) || 999) - (Number(b.rank) || 999));
-  return { matches, leaderboard };
-}
-
-function renderCards() {
-  const played = state.matches.filter(m => m.result).length;
-  const top = state.leaderboard[0];
-  const maxPoints = Math.max(0, ...state.leaderboard.map(x => x.points));
-  const groups = new Set(state.matches.map(m => m.group).filter(Boolean)).size;
-  $('summaryCards').innerHTML = [
-    ['Παίκτες', state.leaderboard.length || CONFIG.players.length],
-    ['Αγώνες με αποτέλεσμα', played],
-    ['Όμιλοι', groups],
-    ['Πρώτος', top ? `${top.player} · ${maxPoints}` : '-']
-  ].map(([label, value]) => `<div class="card"><div class="label">${label}</div><div class="value">${esc(value)}</div></div>`).join('');
-}
-
-function renderPodium() {
-  const [first, second, third] = state.leaderboard;
-  const card = (x, medal, cls='') => x ? `<div class="podium-card ${cls}"><div class="medal">${medal}</div><div class="podium-name">${esc(x.player)}</div><div class="podium-points">${esc(x.points)} βαθμοί</div></div>` : '';
-  $('podium').innerHTML = card(second, '🥈') + card(first, '🥇', 'first') + card(third, '🥉');
-}
-
-function renderLeaderboard() {
-  const q = clean($('playerSearch').value).toLowerCase();
-  const rows = state.leaderboard.filter(x => x.player.toLowerCase().includes(q));
-  $('leaderboardTable').innerHTML = `<thead><tr><th>Θέση</th><th>Παίκτης</th><th>Βαθμοί</th></tr></thead><tbody>` +
-    rows.map(x => `<tr><td class="rank">#${esc(x.rank)}</td><td class="player-name">${esc(x.player)}</td><td class="points">${esc(x.points)}</td></tr>`).join('') +
-    `</tbody>`;
-}
-
-function renderGroupFilter() {
-  const groups = [...new Set(state.matches.map(m => m.group).filter(Boolean))].sort((a,b)=>a.localeCompare(b, 'el'));
-  $('groupFilter').innerHTML = '<option value="">Όλοι οι όμιλοι</option>' + groups.map(g => `<option value="${esc(g)}">${esc(g)}</option>`).join('');
-}
-
-function renderMatches() {
-  const g = clean($('groupFilter').value);
-  const rows = state.matches.filter(m => !g || m.group === g);
-  $('matchesTable').innerHTML = `<thead><tr><th>Ημερομηνία</th><th>Ώρα</th><th>Όμιλος</th><th>Αγώνας</th><th>Αποτέλεσμα</th><th>Θέση</th></tr></thead><tbody>` +
-    rows.map(m => `<tr><td>${esc(m.date)}</td><td>${esc(m.time)}</td><td><span class="badge">${esc(m.group || '-')}</span></td><td>${esc(m.match)}</td><td class="result">${esc(m.result || '-')}</td><td>${esc(m.slot || '')}</td></tr>`).join('') +
-    `</tbody>`;
-}
-
-function renderPlayerSelect() {
-  $('playerSelect').innerHTML = '<option value="">Επιλογή παίκτη</option>' + CONFIG.players.map(p => `<option value="${esc(p)}">${esc(p)}</option>`).join('');
-}
-
-async function renderPlayer(sheetName) {
-  if (!sheetName) { $('playerBox').textContent = 'Διάλεξε παίκτη για να δεις τις προβλέψεις του.'; return; }
-  $('playerBox').innerHTML = 'Φόρτωση προβλέψεων…';
-  try {
-    const rows = await fetchSheet(sheetName);
-    const body = [];
-    for (let i = 2; i < rows.length; i++) {
-      const r = rows[i] || [];
-      const match = clean(r[0]), pred = clean(r[1]), pts = clean(r[2]);
-      const slot = clean(r[3]), team = clean(r[4]), progPts = clean(r[5]);
-      if (match || pred || team) body.push({ match, pred, pts, slot, team, progPts });
-    }
-    $('playerBox').innerHTML = `<div class="table-wrap"><table><thead><tr><th>Αγώνας</th><th>Πρόβλεψη</th><th>Πόντοι</th><th>Θέση</th><th>Ομάδα</th><th>Πόντοι</th></tr></thead><tbody>` +
-      body.map(x => `<tr><td>${esc(x.match)}</td><td>${esc(x.pred)}</td><td class="points">${esc(x.pts)}</td><td>${esc(x.slot)}</td><td>${esc(x.team)}</td><td class="points">${esc(x.progPts)}</td></tr>`).join('') +
-      `</tbody></table></div>`;
-  } catch (err) {
-    $('playerBox').innerHTML = `<span class="warn">${esc(err.message)}</span><br>Έλεγξε ότι το συγκεκριμένο φύλλο είναι δημοσιευμένο στο web.`;
-  }
-}
-
-async function load() {
-  $('status').textContent = 'Φόρτωση δεδομένων από Google Sheets…';
-  try {
-    const rows = await fetchSheet(CONFIG.resultsSheet);
-    Object.assign(state, parseResults(rows));
-    renderCards(); renderPodium(); renderLeaderboard(); renderGroupFilter(); renderMatches(); renderPlayerSelect();
-    $('status').textContent = `Τελευταία ενημέρωση: ${new Date().toLocaleString('el-GR')}`;
-  } catch (err) {
-    $('status').innerHTML = `<span class="warn">${esc(err.message)}</span><br>Πιθανή αιτία: το Google Sheet δεν έχει γίνει Publish to web ή το φύλλο «ΑΠΟΤΕΛΕΣΜΑΤΑ» δεν είναι δημοσιευμένο.`;
-  }
-}
-
-$('refreshBtn').addEventListener('click', load);
-$('playerSearch').addEventListener('input', renderLeaderboard);
-$('groupFilter').addEventListener('change', renderMatches);
-$('playerSelect').addEventListener('change', e => renderPlayer(e.target.value));
-load();
+function clean(v){return (v??'').toString().replace(/\uFEFF/g,'').trim();}
+function esc(v){return clean(v).replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));}
+function isIgnored(name){return CONFIG.ignoredSheets.map(x=>x.toLowerCase()).includes(clean(name).toLowerCase());}
+function csvUrl(sheetName){const base=`https://docs.google.com/spreadsheets/d/${CONFIG.spreadsheetId}/gviz/tq`;const params=new URLSearchParams({tqx:'out:csv',sheet:sheetName,cacheBust:Date.now().toString()});return `${base}?${params.toString()}`;}
+function parseCsv(text){const rows=[];let row=[],cell='',q=false;for(let i=0;i<text.length;i++){const ch=text[i],n=text[i+1];if(ch==='"'){if(q&&n==='"'){cell+='"';i++;}else q=!q;}else if(ch===','&&!q){row.push(cell);cell='';}else if((ch==='\n'||ch==='\r')&&!q){if(ch==='\r'&&n==='\n')i++;row.push(cell);rows.push(row);row=[];cell='';}else cell+=ch;}if(cell.length||row.length){row.push(cell);rows.push(row);}return rows;}
+async function fetchSheet(sheetName){const res=await fetch(csvUrl(sheetName),{cache:'no-store'});if(!res.ok)throw new Error(`Δεν μπόρεσα να διαβάσω το φύλλο «${sheetName}».`);const text=await res.text();if(text.includes('<!DOCTYPE html')||text.includes('<html'))throw new Error(`Το Google Sheet δεν επιστρέφει CSV για το φύλλο «${sheetName}».`);return parseCsv(text);}
+function parseResults(rows){const matches=[];for(let i=2;i<rows.length;i++){const r=rows[i]||[];const date=clean(r[0]),time=clean(r[1]),group=clean(r[2]),match=clean(r[3]),result=clean(r[4]),slot=clean(r[5]);if(match&&!match.toUpperCase().includes('ΒΑΘΜΟΛΟΓΙΑ'))matches.push({date,time,group,match,result,slot});}
+let leaderboard=[];for(let i=1;i<rows.length;i++){const r=rows[i]||[];const rank=clean(r[17]),player=clean(r[18]),points=clean(r[19]);if(rank&&player&&!isIgnored(player))leaderboard.push({rank,player,points:Number(points)||0});}
+if(!leaderboard.length){for(let i=1;i<rows.length;i++){const r=rows[i]||[];const rank=clean(r[8]),player=clean(r[9]),points=clean(r[10]);if(rank&&player&&!isIgnored(player))leaderboard.push({rank,player,points:Number(points)||0});}}
+leaderboard=leaderboard.filter(x=>CONFIG.players.includes(x.player)).sort((a,b)=>(Number(a.rank)||999)-(Number(b.rank)||999));return{matches,leaderboard};}
+function medal(rank){return rank==1?'🥇':rank==2?'🥈':rank==3?'🥉':`#${rank}`;}
+function initials(name){return clean(name).split(/\s+/).map(x=>x[0]).join('').slice(0,2);}
+function renderCards(){const played=state.matches.filter(m=>m.result).length;const total=state.matches.length;const top=state.leaderboard[0];const groups=new Set(state.matches.map(m=>m.group).filter(Boolean)).size;$('summaryCards').innerHTML=[['Παίκτες',state.leaderboard.length||CONFIG.players.length],['Αγώνες με αποτέλεσμα',`${played} / ${total||'-'}`],['Όμιλοι',groups],['Πρώτος',top?`${top.player} · ${top.points}`:'-']].map(([l,v])=>`<div class="card"><div class="label">${esc(l)}</div><div class="value">${esc(v)}</div></div>`).join('');}
+function renderPodium(){const [first,second,third]=state.leaderboard;const card=(x,m,cls='')=>x?`<div class="podium-card ${cls}"><div class="medal">${m}</div><div class="avatar">${esc(initials(x.player))}</div><div class="podium-name">${esc(x.player)}</div><div class="podium-points">${esc(x.points)} βαθμοί</div></div>`:'';$('podium').innerHTML=card(second,'🥈')+card(first,'🥇','first')+card(third,'🥉');}
+function renderTopTen(){const top=state.leaderboard.slice(0,10);$('topTen').innerHTML=top.map((x,i)=>`<div class="top-row"><div class="pos">${medal(i+1)}</div><div class="top-player">${esc(x.player)}</div><div class="top-points">${esc(x.points)}</div></div>`).join('')||'<div class="player-box">Δεν υπάρχουν δεδομένα.</div>';}
+function renderQuickStats(){const pts=state.leaderboard.map(x=>x.points);const max=Math.max(0,...pts),min=Math.min(...pts.filter(x=>x>=0));const tied=state.leaderboard.filter(x=>x.points===max).length;const played=state.matches.filter(m=>m.result).length;$('quickStats').innerHTML=[['Κορυφή',`${max} βαθμοί`],['Ισοβαθμία στην κορυφή',`${tied} παίκτες`],['Αγώνες που μετράνε',played],['Τελευταίος έχει',Number.isFinite(min)?`${min} βαθμούς`:'-']].map(([a,b])=>`<div class="stat-line"><span>${esc(a)}</span><strong>${esc(b)}</strong></div>`).join('');}
+function renderRecentMatches(){const g=clean($('groupFilter').value);let rows=state.matches.filter(m=>m.result && (!g||m.group===g)).slice(-8).reverse();if(!rows.length)rows=state.matches.filter(m=>!g||m.group===g).slice(0,8);$('recentMatches').innerHTML=rows.map(m=>`<div class="match-card"><div class="match-meta">${esc(m.date||'-')} · ${esc(m.group||'-')}</div><div class="match-title">${esc(m.match)}</div><div class="score-pill">${esc(m.result||'—')}</div></div>`).join('')||'<div class="player-box">Δεν υπάρχουν αγώνες.</div>';}
+function renderLeaderboard(){const q=clean($('playerSearch').value).toLowerCase();const rows=state.leaderboard.filter(x=>x.player.toLowerCase().includes(q));$('leaderboardTable').innerHTML=`<thead><tr><th>Θέση</th><th>Παίκτης</th><th>Βαθμοί</th></tr></thead><tbody>`+rows.map((x,i)=>`<tr><td class="rank">${medal(i+1)}</td><td class="player-name">${esc(x.player)}</td><td class="points">${esc(x.points)}</td></tr>`).join('')+`</tbody>`;}
+function renderGroupFilter(){const current=$('groupFilter').value;const groups=[...new Set(state.matches.map(m=>m.group).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'el'));$('groupFilter').innerHTML='<option value="">Όλοι οι όμιλοι</option>'+groups.map(g=>`<option value="${esc(g)}">${esc(g)}</option>`).join('');$('groupFilter').value=current;}
+function renderPlayerSelect(){$('playerSelect').innerHTML='<option value="">Επιλογή παίκτη</option>'+CONFIG.players.map(p=>`<option value="${esc(p)}">${esc(p)}</option>`).join('');}
+async function renderPlayer(sheetName){if(!sheetName){$('playerBox').textContent='Διάλεξε παίκτη για να δεις τις προβλέψεις του.';return;}$('playerBox').innerHTML='Φόρτωση προβλέψεων…';try{const rows=await fetchSheet(sheetName);const body=[];let earned=0,filled=0;for(let i=2;i<rows.length;i++){const r=rows[i]||[];const match=clean(r[0]),pred=clean(r[1]),pts=clean(r[2]),slot=clean(r[3]),team=clean(r[4]),progPts=clean(r[5]);if(match||pred||team){body.push({match,pred,pts,slot,team,progPts});if(pred)filled++;earned+=Number(pts)||0;earned+=Number(progPts)||0;}}const rank=state.leaderboard.find(x=>x.player===sheetName);$('playerBox').innerHTML=`<div class="player-profile"><div class="profile-stat"><div>Θέση</div><strong>${rank?medal(Number(rank.rank)||0):'-'}</strong></div><div class="profile-stat"><div>Σύνολο βαθμών</div><strong>${rank?rank.points:earned}</strong></div><div class="profile-stat"><div>Προβλέψεις</div><strong>${filled}</strong></div></div><div class="table-wrap"><table><thead><tr><th>Αγώνας</th><th>Πρόβλεψη</th><th>Πόντοι</th><th>Θέση</th><th>Ομάδα</th><th>Πόντοι</th></tr></thead><tbody>`+body.map(x=>`<tr><td>${esc(x.match)}</td><td>${esc(x.pred)}</td><td class="points">${esc(x.pts)}</td><td>${esc(x.slot)}</td><td>${esc(x.team)}</td><td class="points">${esc(x.progPts)}</td></tr>`).join('')+`</tbody></table></div>`;}catch(err){$('playerBox').innerHTML=`<span class="warn">${esc(err.message)}</span><br>Έλεγξε ότι το συγκεκριμένο φύλλο είναι δημοσιευμένο στο web.`;}}
+function renderAll(){renderCards();renderPodium();renderTopTen();renderQuickStats();renderGroupFilter();renderRecentMatches();renderLeaderboard();renderPlayerSelect();}
+async function load(){$('status').textContent='Φόρτωση δεδομένων από Google Sheets…';try{const rows=await fetchSheet(CONFIG.resultsSheet);Object.assign(state,parseResults(rows));renderAll();$('status').textContent=`Τελευταία ενημέρωση: ${new Date().toLocaleString('el-GR')}`;}catch(err){$('status').innerHTML=`<span class="warn">${esc(err.message)}</span><br>Πιθανή αιτία: το Google Sheet δεν έχει γίνει Publish to web ή το φύλλο «ΑΠΟΤΕΛΕΣΜΑΤΑ» δεν είναι δημοσιευμένο.`;}}
+$('refreshBtn').addEventListener('click',load);$('playerSearch').addEventListener('input',renderLeaderboard);$('groupFilter').addEventListener('change',renderRecentMatches);$('playerSelect').addEventListener('change',e=>renderPlayer(e.target.value));load();

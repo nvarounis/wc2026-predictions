@@ -1,20 +1,16 @@
-# WC 2026 Predictions League
+# WC2026 Predictions League - Version 3
 
-Static GitHub Pages website for the WC2026 prediction game.
+Professional GitHub Pages dashboard for the WC2026 prediction game.
 
-It reads live data from Google Sheets:
+## Update instructions
 
-- `ΑΠΟΤΕΛΕΣΜΑΤΑ` for match results and leaderboard
-- the 32 player sheets for predictions
-- ignores `stats`, `stats2`, `stats-2`, and `ΚΑΝΟΝΙΣΜΟΙ`
+Upload these 4 files to the root of your GitHub repository:
 
-## Upload
+- index.html
+- style.css
+- app.js
+- README.md
 
-Upload these files to the root of the GitHub repository:
+Then commit changes and refresh the GitHub Pages site with Ctrl + F5.
 
-- `index.html`
-- `style.css`
-- `app.js`
-- `README.md`
-
-GitHub Pages should be set to branch `main`, folder `/root`.
+The site reads data from the public Google Sheet and ignores stats / stats-2.
