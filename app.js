@@ -82,6 +82,12 @@ function parseResults(rows) {
 }
 
 function addCount(map, key){ if (validPick(key)) map.set(clean(key), (map.get(clean(key)) || 0) + 1); }
+function addPick(bucket, key, player){
+  if (!validPick(key)) return;
+  const k = clean(key);
+  if (!bucket.has(k)) bucket.set(k, []);
+  if (!bucket.get(k).includes(player)) bucket.get(k).push(player);
+}
 function topEntries(map, limit=8){ return [...map.entries()].sort((a,b)=>b[1]-a[1] || a[0].localeCompare(b[0], 'el')).slice(0, limit); }
 function findPick(rows, labels){
   const set = labels.map(norm);
@@ -114,35 +120,53 @@ function valuesE(rows, start, end){
   }
   return out;
 }
+function valueByExactLabel(rows, labels){
+  const wanted = labels.map(norm);
+  for (const r of rows) {
+    const label = norm((r || [])[3]);
+    if (wanted.includes(label)) return clean((r || [])[4]);
+  }
+  return '';
+}
+function valuesByLabelPrefix(rows, prefixes){
+  const ps = prefixes.map(norm); const out = [];
+  for (const r of rows) {
+    const label = norm((r || [])[3]);
+    if (ps.some(p => label.startsWith(p)) && validPick((r || [])[4])) out.push(clean((r || [])[4]));
+  }
+  return out;
+}
 function parsePlayerAnalytics(player, rows){
-  const champion = eCell(rows, FIXED.champion) || findPick(rows, ['ΝΙΚΗΤΗΣ']);
-  const scorer = eCell(rows, FIXED.scorer) || findPick(rows, ['1ος ΣΚΟΡΕΡ', '1ΟΣ ΣΚΟΡΕΡ']);
+  // Label-based extraction first. This avoids row-offset problems in published CSV.
+  const champion = valueByExactLabel(rows, ['ΝΙΚΗΤΗΣ']) || eCell(rows, FIXED.champion);
+  const scorer = valueByExactLabel(rows, ['1ος ΣΚΟΡΕΡ', '1ΟΣ ΣΚΟΡΕΡ']) || eCell(rows, FIXED.scorer);
+  const thirdPlace = valueByExactLabel(rows, ['ΝΙΚΗΤΗΣ ΜΙΚΡΟΥ ΤΕΛΙΚΟΥ']) || eCell(rows, FIXED.thirdPlace);
+  const finalists = valuesByLabelPrefix(rows, ['ΝΗΜ']).slice(0,2);
+  const semiWinners = valuesByLabelPrefix(rows, ['ΗΗ']).slice(0,2);
+  const semiFinalists = valuesByLabelPrefix(rows, ['ΠΡΟ']).slice(0,4);
+  const quarterFinalists = valuesByLabelPrefix(rows, ['16.']).slice(0,8);
+  const round16 = valuesByLabelPrefix(rows, ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII', 'XIII', 'XIV', 'XV', 'XVI']).slice(0,16);
   const round32 = valuesE(rows, ...FIXED.round32);
-  const round16 = valuesE(rows, ...FIXED.round16);
-  const quarterFinalists = valuesE(rows, ...FIXED.quarters);
-  const semiFinalists = valuesE(rows, ...FIXED.semis);
-  const semiWinners = valuesE(rows, ...FIXED.semiWinners);
-  const finalists = valuesE(rows, ...FIXED.finalTeams);
   const finalPair = finalists.length >= 2 ? finalPairLabel(finalists[0], finalists[1]) : '';
-  const thirdPlace = eCell(rows, FIXED.thirdPlace) || findPick(rows, ['ΝΙΚΗΤΗΣ ΜΙΚΡΟΥ ΤΕΛΙΚΟΥ']);
   return { player, champion, scorer, round32, round16, quarterFinalists, semiFinalists, semiWinners, finalists, finalPair, thirdPlace };
 }
 
 function aggregateAnalytics(analytics){
   const maps = { champions:new Map(), scorers:new Map(), finalists:new Map(), finalPairs:new Map(), semis:new Map(), quarters:new Map(), round16:new Map(), round32:new Map(), semiWinners:new Map(), thirdPlaces:new Map() };
+  const picks = { champions:new Map(), scorers:new Map(), finalists:new Map(), finalPairs:new Map(), semis:new Map(), quarters:new Map(), round16:new Map(), round32:new Map(), semiWinners:new Map(), thirdPlaces:new Map() };
   for (const a of analytics) {
-    addCount(maps.champions, a.champion);
-    addCount(maps.scorers, a.scorer);
-    addCount(maps.finalPairs, a.finalPair);
-    addCount(maps.thirdPlaces, a.thirdPlace);
-    a.finalists.forEach(x => addCount(maps.finalists, x));
-    a.semiFinalists.forEach(x => addCount(maps.semis, x));
-    a.semiWinners.forEach(x => addCount(maps.semiWinners, x));
-    a.quarterFinalists.forEach(x => addCount(maps.quarters, x));
-    a.round16.forEach(x => addCount(maps.round16, x));
-    a.round32.forEach(x => addCount(maps.round32, x));
+    addCount(maps.champions, a.champion); addPick(picks.champions, a.champion, a.player);
+    addCount(maps.scorers, a.scorer); addPick(picks.scorers, a.scorer, a.player);
+    addCount(maps.finalPairs, a.finalPair); addPick(picks.finalPairs, a.finalPair, a.player);
+    addCount(maps.thirdPlaces, a.thirdPlace); addPick(picks.thirdPlaces, a.thirdPlace, a.player);
+    a.finalists.forEach(x => { addCount(maps.finalists, x); addPick(picks.finalists, x, a.player); });
+    a.semiFinalists.forEach(x => { addCount(maps.semis, x); addPick(picks.semis, x, a.player); });
+    a.semiWinners.forEach(x => { addCount(maps.semiWinners, x); addPick(picks.semiWinners, x, a.player); });
+    a.quarterFinalists.forEach(x => { addCount(maps.quarters, x); addPick(picks.quarters, x, a.player); });
+    a.round16.forEach(x => { addCount(maps.round16, x); addPick(picks.round16, x, a.player); });
+    a.round32.forEach(x => { addCount(maps.round32, x); addPick(picks.round32, x, a.player); });
   }
-  return { analytics, maps, loadedPlayers: analytics.length };
+  return { analytics, maps, picks, loadedPlayers: analytics.length };
 }
 
 async function loadPredictionStats(force=false){
@@ -224,16 +248,35 @@ function renderLeaderboard() {
   const max = Math.max(1, ...state.leaderboard.map(x=>x.points));
   const leader = state.leaderboard[0]?.points || 0;
   $('leaderboardTable').innerHTML = `<thead><tr><th>Θέση</th><th>Παίκτης</th><th>Βαθμοί</th><th>Απόσταση από 1ο</th><th>Φόρμα</th></tr></thead><tbody>` +
-    rows.map((x) => `<tr><td class="rank">${medal(x.rank)}</td><td class="player-name"><button class="link-btn" onclick="selectPlayer('${esc(x.player)}')">${esc(x.player)}</button></td><td class="points">${esc(x.points)}</td><td class="diff">${x.points - leader}</td><td><div class="bar-track"><div class="bar-fill" style="width:${Math.max(4, x.points/max*100)}%"></div></div></td></tr>`).join('') + `</tbody>`;
+    rows.map((x) => `<tr><td class="rank">${medal(x.rank)}</td><td class="player-name"><button class="link-btn" onclick="openPlayerModal('${esc(x.player)}')">${esc(x.player)}</button></td><td class="points">${esc(x.points)}</td><td class="diff">${x.points - leader}</td><td><div class="bar-track"><div class="bar-fill" style="width:${Math.max(4, x.points/max*100)}%"></div></div></td></tr>`).join('') + `</tbody>`;
 }
 
 function renderGroupFilter() {
   const groups = [...new Set(state.matches.map(m => m.group).filter(Boolean))].sort((a,b)=>a.localeCompare(b, 'el'));
   $('groupFilter').innerHTML = '<option value="">Όλοι οι όμιλοι</option>' + groups.map(g => `<option value="${esc(g)}">${esc(g)}</option>`).join('');
 }
+function matchInsights(match){
+  const exact = [], points = [];
+  for (const [player, rows] of Object.entries(state.playerSheets)) {
+    for (const r of rows) {
+      if (norm((r || [])[0]) === norm(match.match)) {
+        const pts = Number(clean((r || [])[2])) || 0;
+        if (pts > 0) points.push({ player, pts, pred: clean((r || [])[1]) });
+        if (clean((r || [])[1]) === clean(match.result) && match.result) exact.push(player);
+        break;
+      }
+    }
+  }
+  return { exact, points };
+}
 function renderRecentMatches(){
   const recent = state.matches.filter(m => m.result).slice(-6).reverse();
-  $('recentMatches').innerHTML = recent.map(m => `<div class="match-card"><div class="match-meta">${esc(m.date)} · ${esc(m.group || '-')}</div><div class="match-title">${esc(m.match)}</div><div class="score-pill">${esc(m.result)}</div></div>`).join('');
+  $('recentMatches').innerHTML = recent.map((m,idx) => {
+    const hasSheets = Object.keys(state.playerSheets).length > 0;
+    const ins = hasSheets ? matchInsights(m) : { exact:[], points:[] };
+    return `<button class="match-card match-button" onclick="openMatchModal(${idx})"><div class="match-meta">${esc(m.date)} · ${esc(m.group || '-')}</div><div><div class="match-title">${esc(m.match)}</div><small>${hasSheets ? `${ins.points.length} πήραν βαθμούς · ${ins.exact.length} ακριβές σκορ` : 'πατήστε μετά τη φόρτωση στατιστικών'}</small></div><div class="score-pill">${esc(m.result)}</div></button>`;
+  }).join('');
+  window.__recentMatches = recent;
 }
 function renderMatches() {
   const g = clean($('groupFilter').value);
@@ -322,8 +365,43 @@ function renderPredictionStats(){
   makeChart('quarterChart', quarterEntries);
   renderConsensusCards();
   renderDarkHorses();
+  renderExplorer();
+  renderRecentMatches();
   renderQuickStats();
 }
+
+
+function renderExplorer(){
+  const el = $('explorerList');
+  if (!el || !state.predictionStats) return;
+  const type = $('explorerType')?.value || 'champions';
+  const entries = topEntries(state.predictionStats.maps[type], 40);
+  const total = type === 'finalists' ? state.predictionStats.loadedPlayers * 2 : type === 'semis' ? state.predictionStats.loadedPlayers * 4 : type === 'quarters' ? state.predictionStats.loadedPlayers * 8 : state.predictionStats.loadedPlayers;
+  el.innerHTML = entries.map(([label,count]) => `<button class="pick-card" onclick="openPickModal('${type}','${esc(label)}')"><div><strong>${esc(label)}</strong><small>${count}/${total} επιλογές</small></div><span>Ποιοι; ›</span></button>`).join('') || '<div class="empty-state">Δεν υπάρχουν δεδομένα.</div>';
+}
+function openModal(html){ $('modalContent').innerHTML = html; $('modal').classList.remove('hidden'); }
+function closeModal(){ $('modal').classList.add('hidden'); }
+window.closeModal = closeModal;
+function openPickModal(type, label){
+  const pickers = state.predictionStats?.picks?.[type]?.get(label) || [];
+  openModal(`<p class="small-title">Prediction Explorer</p><h2>${esc(label)}</h2><p class="modal-sub">${pickers.length} παίκτες</p><div class="picker-grid">${pickers.map(p => `<button onclick="closeModal();selectPlayer('${esc(p)}')">${esc(p)}</button>`).join('') || '<em>Δεν βρέθηκαν παίκτες.</em>'}</div>`);
+}
+window.openPickModal = openPickModal;
+function openPlayerModal(player){
+  const a = state.predictionStats?.analytics?.find(x => x.player === player);
+  const lb = state.leaderboard.find(x => x.player === player);
+  if (!a) { selectPlayer(player); return; }
+  openModal(`<p class="small-title">Player profile</p><h2>👤 ${esc(player)}</h2><div class="mini-profile"><div><span>Θέση</span><b>${lb ? '#'+lb.rank : '-'}</b></div><div><span>Βαθμοί</span><b>${lb ? lb.points : '-'}</b></div><div><span>Πρωταθλήτρια</span><b>${esc(a.champion || '-')}</b></div><div><span>1ος σκόρερ</span><b>${esc(a.scorer || '-')}</b></div></div>${profileAnalyticsHtml(player,a)}<button onclick="closeModal();selectPlayer('${esc(player)}')">Άνοιγμα αναλυτικού προφίλ</button>`);
+}
+window.openPlayerModal = openPlayerModal;
+function openMatchModal(idx){
+  const m = (window.__recentMatches || [])[idx];
+  if (!m) return;
+  const ins = matchInsights(m);
+  const best = ins.points.sort((a,b)=>b.pts-a.pts || a.player.localeCompare(b.player,'el')).slice(0,20);
+  openModal(`<p class="small-title">Match insights</p><h2>${esc(m.match)}</h2><div class="score-big">${esc(m.result || '-')}</div><div class="mini-profile"><div><span>Πήραν βαθμούς</span><b>${ins.points.length}</b></div><div><span>Ακριβές σκορ</span><b>${ins.exact.length}</b></div><div><span>Όμιλος</span><b>${esc(m.group || '-')}</b></div><div><span>Ημερομηνία</span><b>${esc(m.date || '-')}</b></div></div><h3>Best predictors</h3><div class="picker-grid">${best.map(x=>`<button onclick="closeModal();selectPlayer('${esc(x.player)}')">${esc(x.player)} · ${x.pts} pts · ${esc(x.pred)}</button>`).join('') || '<em>Τα insights θα εμφανιστούν όταν φορτωθούν τα φύλλα παικτών.</em>'}</div>`);
+}
+window.openMatchModal = openMatchModal;
 
 function profileAnalyticsHtml(sheetName, analytics){
   if (!analytics) return '';
@@ -382,4 +460,5 @@ $('statsRefreshBtn').addEventListener('click', () => { state.predictionStats = n
 $('playerSearch').addEventListener('input', renderLeaderboard);
 $('groupFilter').addEventListener('change', renderMatches);
 $('playerSelect').addEventListener('change', e => renderPlayer(e.target.value));
+$('explorerType').addEventListener('change', renderExplorer);
 load();

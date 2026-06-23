@@ -5,216 +5,82 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>WC 2026 Predictions League</title>
   <link rel="stylesheet" href="style.css" />
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script defer src="app.js"></script>
 </head>
 <body>
   <div class="app-shell">
     <aside class="sidebar">
-      <div class="brand">
-        <div class="logo">🏆</div>
-        <div>
-          <div class="brand-title">World Cup 2026</div>
-          <div class="brand-subtitle">Prediction Game</div>
-        </div>
-      </div>
+      <div class="brand"><div class="logo">🏆</div><div><div class="brand-title">World Cup 2026</div><div class="brand-subtitle">Prediction Game</div></div></div>
       <nav class="nav">
         <a href="#top" class="nav-link active">Αρχική</a>
         <a href="#ranking" class="nav-link">Κατάταξη</a>
         <a href="#matches" class="nav-link">Αγώνες</a>
-        <a href="#stats" class="nav-link">Στατιστικά</a>
         <a href="#wisdom" class="nav-link">Wisdom</a>
+        <a href="#stats" class="nav-link">Στατιστικά</a>
+        <a href="#explorer" class="nav-link">Explorer</a>
         <a href="#players" class="nav-link">Παίκτες</a>
       </nav>
-      <div class="side-card">
-        <div class="mini-label">Live από</div>
-        <div class="mini-value">Google Sheets</div>
-        <div class="mini-note">Αγνοούνται stats / stats-2</div>
-      </div>
+      <div class="side-card"><div class="mini-label">Live από</div><div class="mini-value">Google Sheets</div><div class="mini-note">Αγνοούνται stats / stats-2</div></div>
     </aside>
 
     <main id="top" class="main">
       <header class="hero">
-        <div>
-          <p class="eyebrow">WORLD CUP 2026</p>
-          <h1>Predictions League</h1>
-          <p class="subtitle">Live βαθμολογία, αποτελέσματα και προβλέψεις 32 παικτών.</p>
-        </div>
-        <div class="hero-actions">
-          <div id="status" class="status">Φόρτωση δεδομένων…</div>
-          <button id="refreshBtn">↻ Ανανέωση</button>
-        </div>
+        <div><p class="eyebrow">WORLD CUP 2026</p><h1>Predictions League</h1><p class="subtitle">Live βαθμολογία, αποτελέσματα και προβλέψεις 32 παικτών.</p></div>
+        <div class="hero-actions"><div id="status" class="status">Φόρτωση δεδομένων…</div><button id="refreshBtn">↻ Ανανέωση</button></div>
       </header>
 
       <section id="summaryCards" class="cards"></section>
 
       <section class="dashboard-grid">
         <div class="left-col">
-          <section class="podium-panel">
-            <div class="section-head">
-              <div>
-                <p class="small-title">Top 3</p>
-                <h2>Το βάθρο</h2>
-              </div>
-            </div>
-            <div class="podium" id="podium"></div>
-          </section>
-
-          <section id="matches" class="panel">
-            <div class="panel-title">
-              <div>
-                <p class="small-title">Match Center</p>
-                <h2>Τελευταία αποτελέσματα</h2>
-              </div>
-              <select id="groupFilter"><option value="">Όλοι οι όμιλοι</option></select>
-            </div>
-            <div id="recentMatches" class="match-list"></div>
-          </section>
+          <section class="podium-panel"><div class="section-head"><div><p class="small-title">Top 3</p><h2>Το βάθρο</h2></div></div><div class="podium" id="podium"></div></section>
+          <section id="matches" class="panel"><div class="panel-title"><div><p class="small-title">Match Center</p><h2>Τελευταία αποτελέσματα</h2></div><select id="groupFilter"><option value="">Όλοι οι όμιλοι</option></select></div><div id="recentMatches" class="match-list"></div></section>
         </div>
-
         <aside class="right-col">
-          <section class="panel compact-panel" id="ranking">
-            <div class="panel-title">
-              <div>
-                <p class="small-title">Leaderboard</p>
-                <h2>Top 10</h2>
-              </div>
-            </div>
-            <div id="topTen" class="top-ten"></div>
-          </section>
-
-          <section class="panel compact-panel">
-            <div class="panel-title">
-              <div>
-                <p class="small-title">Quick stats</p>
-                <h2>Σύνοψη</h2>
-              </div>
-            </div>
-            <div id="quickStats" class="quick-stats"></div>
-          </section>
-
-          <section class="panel compact-panel">
-            <div class="panel-title">
-              <div>
-                <p class="small-title">Movers</p>
-                <h2>Μεταβολές</h2>
-              </div>
-            </div>
-            <div id="moversBox" class="movers-box"></div>
-          </section>
+          <section class="panel compact-panel" id="ranking"><div class="panel-title"><div><p class="small-title">Leaderboard</p><h2>Top 10</h2></div></div><div id="topTen" class="top-ten"></div></section>
+          <section class="panel compact-panel"><div class="panel-title"><div><p class="small-title">Quick stats</p><h2>Σύνοψη</h2></div></div><div id="quickStats" class="quick-stats"></div></section>
+          <section class="panel compact-panel"><div class="panel-title"><div><p class="small-title">Movers</p><h2>Μεταβολές</h2></div></div><div id="moversBox" class="movers-box"></div></section>
         </aside>
       </section>
 
-      <section id="stats" class="panel full-panel stats-panel">
-        <div class="panel-title">
-          <div>
-            <p class="small-title">Prediction analytics</p>
-            <h2>Στατιστικά προβλέψεων</h2>
-          </div>
-          <button id="statsRefreshBtn" class="ghost-btn">↻ Φόρτωση στατιστικών</button>
-        </div>
-        <div id="statsStatus" class="stats-status">Τα στατιστικά υπολογίζονται από τα πραγματικά κελιά των φύλλων παικτών: E3:E38, E40:E55, E57:E64, E66:E69, E74:E78.</div>
-
-        <div class="chart-grid">
-          <div class="chart-card">
-            <div class="chart-head"><span>🏆</span><div><p class="small-title">Champion picks</p><h3>Πρωταθλήτρια</h3></div></div>
-            <canvas id="championChart" height="230"></canvas>
-          </div>
-          <div class="chart-card">
-            <div class="chart-head"><span>⚽</span><div><p class="small-title">Top scorer picks</p><h3>Πρώτος σκόρερ</h3></div></div>
-            <canvas id="scorerChart" height="230"></canvas>
-          </div>
-        </div>
-
-        <div class="stats-grid">
-          <div class="stat-card big-stat">
-            <div class="stat-icon">🏆</div>
-            <div>
-              <p class="small-title">Πρωταθλήτρια</p>
-              <h3>Πιο δημοφιλής επιλογή</h3>
-              <div id="championStats" class="bar-list muted-box">Φόρτωση…</div>
-            </div>
-          </div>
-          <div class="stat-card big-stat">
-            <div class="stat-icon">⚽</div>
-            <div>
-              <p class="small-title">1ος σκόρερ</p>
-              <h3>Πιο δημοφιλής επιλογή</h3>
-              <div id="scorerStats" class="bar-list muted-box">Φόρτωση…</div>
-            </div>
-          </div>
-          <div class="stat-card">
-            <p class="small-title">Τελικός</p>
-            <h3>Πιθανότερα ζευγάρια τελικού</h3>
-            <div id="finalStats" class="bar-list muted-box">Φόρτωση…</div>
-          </div>
-          <div class="stat-card">
-            <p class="small-title">Φιναλίστ</p>
-            <h3>Ομάδες που εμφανίζονται στον τελικό</h3>
-            <div id="finalistStats" class="bar-list muted-box">Φόρτωση…</div>
-          </div>
-          <div class="stat-card">
-            <p class="small-title">Ημιτελικά</p>
-            <h3>Πιο συχνές ομάδες στους 4</h3>
-            <div id="semiStats" class="bar-list muted-box">Φόρτωση…</div>
-          </div>
-          <div class="stat-card">
-            <p class="small-title">Στους 8</p>
-            <h3>Πιο συχνές ομάδες στα προημιτελικά</h3>
-            <div id="quarterStats" class="bar-list muted-box">Φόρτωση…</div>
-          </div>
-        </div>
-      </section>
-
       <section id="wisdom" class="panel full-panel wisdom-panel">
-        <div class="panel-title">
-          <div>
-            <p class="small-title">Wisdom of the crowd</p>
-            <h2>Η συλλογική πρόβλεψη της παρέας</h2>
-          </div>
-        </div>
+        <div class="panel-title"><div><p class="small-title">Wisdom of the Crowd</p><h2>Η συλλογική πρόβλεψη της παρέας</h2></div></div>
         <div id="consensusCards" class="consensus-grid"></div>
         <div class="chart-grid three">
-          <div class="chart-card">
-            <div class="chart-head"><span>🥇</span><div><p class="small-title">Final pairings</p><h3>Ζευγάρια τελικού</h3></div></div>
-            <canvas id="finalChart" height="240"></canvas>
-          </div>
-          <div class="chart-card">
-            <div class="chart-head"><span>🔥</span><div><p class="small-title">Semi finalists</p><h3>Ομάδες στους 4</h3></div></div>
-            <canvas id="semiChart" height="240"></canvas>
-          </div>
-          <div class="chart-card">
-            <div class="chart-head"><span>🎯</span><div><p class="small-title">Quarter finalists</p><h3>Ομάδες στους 8</h3></div></div>
-            <canvas id="quarterChart" height="240"></canvas>
-          </div>
+          <div class="chart-card"><div class="chart-head"><span>🥇</span><div><p class="small-title">Final pairings</p><h3>Ζευγάρια τελικού</h3></div></div><canvas id="finalChart"></canvas></div>
+          <div class="chart-card"><div class="chart-head"><span>🔥</span><div><p class="small-title">Semi finalists</p><h3>Ομάδες στους 4</h3></div></div><canvas id="semiChart"></canvas></div>
+          <div class="chart-card"><div class="chart-head"><span>🎯</span><div><p class="small-title">Quarter finalists</p><h3>Ομάδες στους 8</h3></div></div><canvas id="quarterChart"></canvas></div>
         </div>
         <div id="darkHorses" class="dark-horses"></div>
       </section>
 
-      <section class="panel full-panel">
-        <div class="panel-title">
-          <div>
-            <p class="small-title">Ranking</p>
-            <h2>Βαθμολογία όλων</h2>
-          </div>
-          <input id="playerSearch" placeholder="Αναζήτηση παίκτη…" />
+      <section id="stats" class="panel full-panel stats-panel">
+        <div class="panel-title"><div><p class="small-title">Prediction analytics</p><h2>Στατιστικά προβλέψεων</h2></div><button id="statsRefreshBtn" class="ghost-btn">↻ Φόρτωση στατιστικών</button></div>
+        <div id="statsStatus" class="stats-status">Τα στατιστικά υπολογίζονται από τα φύλλα των 32 παικτών, όχι από τα φύλλα stats / stats-2.</div>
+        <div class="chart-grid">
+          <div class="chart-card"><div class="chart-head"><span>🏆</span><div><p class="small-title">Πρωταθλήτρια</p><h3>Πιο δημοφιλής επιλογή</h3></div></div><canvas id="championChart"></canvas><div id="championStats" class="bar-list muted-box"></div></div>
+          <div class="chart-card"><div class="chart-head"><span>⚽</span><div><p class="small-title">1ος σκόρερ</p><h3>Πιο δημοφιλής επιλογή</h3></div></div><canvas id="scorerChart"></canvas><div id="scorerStats" class="bar-list muted-box"></div></div>
         </div>
-        <div class="table-wrap">
-          <table id="leaderboardTable"></table>
+        <div class="stats-grid">
+          <div class="stat-card"><p class="small-title">Τελικός</p><h3>Πιθανότερα ζευγάρια τελικού</h3><div id="finalStats" class="bar-list muted-box">Φόρτωση…</div></div>
+          <div class="stat-card"><p class="small-title">Φιναλίστ</p><h3>Ομάδες που εμφανίζονται στον τελικό</h3><div id="finalistStats" class="bar-list muted-box">Φόρτωση…</div></div>
+          <div class="stat-card"><p class="small-title">Ημιτελικά</p><h3>Πιο συχνές ομάδες στους 4</h3><div id="semiStats" class="bar-list muted-box">Φόρτωση…</div></div>
+          <div class="stat-card"><p class="small-title">Στους 8</p><h3>Πιο συχνές ομάδες στα προημιτελικά</h3><div id="quarterStats" class="bar-list muted-box">Φόρτωση…</div></div>
         </div>
       </section>
 
-      <section id="players" class="panel full-panel">
-        <div class="panel-title">
-          <div>
-            <p class="small-title">Player profile</p>
-            <h2>Προβλέψεις παίκτη</h2>
-          </div>
-          <select id="playerSelect"></select>
-        </div>
-        <div id="playerBox" class="player-box">Διάλεξε παίκτη για να δεις τις προβλέψεις του.</div>
+      <section id="explorer" class="panel full-panel explorer-panel">
+        <div class="panel-title"><div><p class="small-title">Prediction Explorer</p><h2>Ποιος διάλεξε τι</h2></div><select id="explorerType"><option value="champions">Πρωταθλήτρια</option><option value="scorers">1ος σκόρερ</option><option value="finalPairs">Τελικός</option><option value="semis">Ημιτελικά</option><option value="quarters">Στους 8</option></select></div>
+        <div id="explorerList" class="explorer-list"></div>
       </section>
+
+      <section class="panel full-panel"><div class="panel-title"><div><p class="small-title">Ranking</p><h2>Βαθμολογία όλων</h2></div><input id="playerSearch" placeholder="Αναζήτηση παίκτη…" /></div><div class="table-wrap"><table id="leaderboardTable"></table></div></section>
+
+      <section id="players" class="panel full-panel"><div class="panel-title"><div><p class="small-title">Player profile</p><h2>Προβλέψεις παίκτη</h2></div><select id="playerSelect"></select></div><div id="playerBox" class="player-box">Διάλεξε παίκτη για να δεις τις προβλέψεις του.</div></section>
     </main>
   </div>
+
+  <div id="modal" class="modal hidden"><div class="modal-backdrop" onclick="closeModal()"></div><div class="modal-card"><button class="modal-close" onclick="closeModal()">×</button><div id="modalContent"></div></div></div>
 </body>
 </html>
