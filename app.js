@@ -115,10 +115,28 @@ function parseResults(rows) {
   return { matches, leaderboard };
 }
 
-function addCount(map, key){ if (validPick(key)) map.set(clean(key), (map.get(clean(key)) || 0) + 1); }
-function addPick(bucket, key, player){
+function normalizeScorerName(v){
+  const x = clean(v).toUpperCase().replace(/\s+/g,' ');
+  // Σκόρερ: δεν εφαρμόζουμε ποτέ φίλτρο 1/X/2 εδώ. Ονόματα όπως ΧΑΑΛΑΝΤ είναι έγκυρα.
+  const map = {
+    'HAALAND':'ΧΑΑΛΑΝΤ',
+    'ΧΑΛΑΝΤ':'ΧΑΑΛΑΝΤ',
+    'ΧΑΑΛΑΝΔ':'ΧΑΑΛΑΝΤ',
+    'EΜΠΑΠΕ':'ΕΜΠΑΠΕ',
+    'ΕΜΠΑΜΠΕ':'ΕΜΠΑΠΕ',
+    'MBAPPE':'ΕΜΠΑΠΕ',
+    'ΜΠΑΠΕ':'ΕΜΠΑΠΕ'
+  };
+  return map[x] || clean(v);
+}
+function addCount(map, key, normalizer=null){
   if (!validPick(key)) return;
-  const k = clean(key);
+  const k = normalizer ? normalizer(key) : clean(key);
+  if (validPick(k)) map.set(k, (map.get(k) || 0) + 1);
+}
+function addPick(bucket, key, player, normalizer=null){
+  if (!validPick(key)) return;
+  const k = normalizer ? normalizer(key) : clean(key);
   if (!bucket.has(k)) bucket.set(k, []);
   if (!bucket.get(k).includes(player)) bucket.get(k).push(player);
 }
@@ -190,7 +208,7 @@ function aggregateAnalytics(analytics){
   const picks = { champions:new Map(), scorers:new Map(), finalists:new Map(), finalPairs:new Map(), semis:new Map(), quarters:new Map(), round16:new Map(), round32:new Map(), semiWinners:new Map(), thirdPlaces:new Map() };
   for (const a of analytics) {
     addCount(maps.champions, a.champion); addPick(picks.champions, a.champion, a.player);
-    addCount(maps.scorers, a.scorer); addPick(picks.scorers, a.scorer, a.player);
+    addCount(maps.scorers, a.scorer, normalizeScorerName); addPick(picks.scorers, a.scorer, a.player, normalizeScorerName);
     addCount(maps.finalPairs, a.finalPair); addPick(picks.finalPairs, a.finalPair, a.player);
     addCount(maps.thirdPlaces, a.thirdPlace); addPick(picks.thirdPlaces, a.thirdPlace, a.player);
     a.finalists.forEach(x => { addCount(maps.finalists, x); addPick(picks.finalists, x, a.player); });
@@ -385,7 +403,7 @@ function renderPredictionStats(){
   if (!state.predictionStats) return;
   const { maps, loadedPlayers } = state.predictionStats;
   const championEntries = topEntries(maps.champions, 8);
-  const scorerEntries = topEntries(maps.scorers, 8);
+  const scorerEntries = topEntries(maps.scorers, 40); // δείχνουμε ΟΛΕΣ τις επιλογές 1ου σκόρερ, όχι μόνο Top 8
   const finalPairEntries = topEntries(maps.finalPairs, 8);
   const semiEntries = topEntries(maps.semis, 10);
   const quarterEntries = topEntries(maps.quarters, 10);
@@ -396,7 +414,7 @@ function renderPredictionStats(){
   renderBarList('semiStats', semiEntries, loadedPlayers * 4);
   renderBarList('quarterStats', quarterEntries, loadedPlayers * 8);
   makeChart('championChart', championEntries);
-  makeChart('scorerChart', scorerEntries);
+  makeChart('scorerChart', scorerEntries.slice(0, 12));
   makeChart('finalChart', finalPairEntries);
   makeChart('semiChart', semiEntries);
   makeChart('quarterChart', quarterEntries);
