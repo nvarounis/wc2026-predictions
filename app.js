@@ -1,6 +1,7 @@
 const CONFIG = {
   spreadsheetId: '1nPgDATdA6U3_OHBuJwrXQcOWT0Lq9dU25QkpdlPDE1g',
   resultsSheet: 'ΑΠΟΤΕΛΕΣΜΑΤΑ',
+  resultsGid: '1805121888',
   ignoredSheets: ['stats', 'stats2', 'stats-2', 'ΚΑΝΟΝΙΣΜΟΙ'],
   players: [
     'ΑΝΑΣΤΑΣΙΑΔΗΣ','ΑΡΒΑΝΙΤΟΠΟΥΛΟΣ','ΒΑΡΟΥΝΗΣ','ΒΕΛΟΥΔΟΣ 1','ΒΕΛΟΥΔΟΣ 2','ΓΚΟΥΛΟΥΣΗΣ Ν','ΓΚΟΥΛΟΥΣΗΣ Χ','ΔΗΜΑ','ΖΑΪΡΗΣ Γ','ΖΑΪΡΗΣ Ν','ΖΙΑΚΑΣ','ΗΛΙΟΠΟΥΛΟΣ','ΚΑΤΣΑΪΤΗΣ','ΚΕΛΛΑΡΗΣ Β','ΚΕΛΛΑΡΗΣ Δ','ΚΟΥΤΟΥΛΑΣ','ΚΟΥΤΣΟΥΦΛΑΚΗΣ','ΛΟΥΒΙΤΑΚΗΣ','ΜΑΡ','ΜΗΛΑΣ','ΝΤΑΒΛΟΥΡΟΣ','ΠΡΟΕΣΤΟΣ','ΣΒΟΛΟΠΟΥΛΟΣ Λ','ΣΒΟΛΟΠΟΥΛΟΣ Π','ΣΒΟΛΟΠΟΥΛΟΣ Τ','ΣΚΙΑΣ','ΣΚΟΥΡΤΑΣ Γ','ΣΚΟΥΡΤΑΣ Φ','ΣΦΗΚΑΣ','ΤΡΙΑΝΤΑΦΥΛΛΑΚΗΣ','ΤΣΟΓΚΑΣ','ΧΑΤΖΗΤΙΜΠΑΣ'
@@ -57,6 +58,13 @@ function resultBreakdown(){
 }
 
 function csvUrl(sheetName) {
+  // Για το φύλλο ΑΠΟΤΕΛΕΣΜΑΤΑ χρησιμοποιούμε export CSV με gid.
+  // Το gviz/tq κάνει type inference στη στήλη E και μπορεί να πετάει τα X ως κενά
+  // επειδή η ίδια στήλη περιέχει κυρίως αριθμούς 1/2. Το export CSV κρατάει το κείμενο X.
+  if (sheetName === CONFIG.resultsSheet && CONFIG.resultsGid) {
+    const params = new URLSearchParams({ format: 'csv', gid: CONFIG.resultsGid, cacheBust: Date.now().toString() });
+    return `https://docs.google.com/spreadsheets/d/${CONFIG.spreadsheetId}/export?${params.toString()}`;
+  }
   const base = `https://docs.google.com/spreadsheets/d/${CONFIG.spreadsheetId}/gviz/tq`;
   const params = new URLSearchParams({ tqx: 'out:csv', sheet: sheetName, cacheBust: Date.now().toString() });
   return `${base}?${params.toString()}`;
