@@ -30,10 +30,18 @@ function medal(rank){ return rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank ==
 function norm(v){ return clean(v).replace(/\s+/g,' ').replace(/\.$/,'').toUpperCase(); }
 function validPick(v){ const x = clean(v); return x && x !== '-' && x.toLowerCase() !== 'none'; }
 function normalizeOutcome(v){
-  const x = norm(v).replace(',', '.');
+  // Αποτέλεσμα αγώνα: δέχεται 1, 2 και ισοπαλία με πολλούς πιθανούς χαρακτήρες
+  // Latin X, ελληνικό Χ, κυριλλικό Х, multiplication sign × κ.λπ.
+  const raw = clean(v);
+  const x = raw
+    .normalize('NFKC')
+    .replace(/\s+/g, '')
+    .replace(',', '.')
+    .toUpperCase();
   if (x === '1' || x === '1.0') return '1';
   if (x === '2' || x === '2.0') return '2';
-  if (x === 'X' || x === 'Χ') return 'X';
+  if (x === 'X' || x === 'Χ' || x === 'Х' || x === '×' || x === '✕' || x === '✖') return 'X';
+  if (x.includes('ΙΣΟ') || x.includes('DRAW')) return 'X';
   return '';
 }
 function isPlayedResult(v){ return !!normalizeOutcome(v); }
