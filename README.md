@@ -1,33 +1,20 @@
 # WC 2026 Predictions League
 
-Static GitHub Pages website that reads live data from a Google Sheet and displays:
+Static GitHub Pages website for the WC2026 prediction game.
 
-- match results from `ΑΠΟΤΕΛΕΣΜΑΤΑ`
-- leaderboard from `ΑΠΟΤΕΛΕΣΜΑΤΑ`
-- predictions from each player sheet
+It reads live data from Google Sheets:
 
-The sheets `stats` and `stats-2` are intentionally ignored.
+- `ΑΠΟΤΕΛΕΣΜΑΤΑ` for match results and leaderboard
+- the 32 player sheets for predictions
+- ignores `stats`, `stats2`, `stats-2`, and `ΚΑΝΟΝΙΣΜΟΙ`
 
-## Google Sheet setup
+## Upload
 
-1. Open the Google Sheet.
-2. Go to **File → Share → Publish to web**.
-3. Publish the spreadsheet or at least the sheets used by the site.
-4. Keep sheet names exactly as listed in `app.js`.
+Upload these files to the root of the GitHub repository:
 
-## GitHub Pages setup
+- `index.html`
+- `style.css`
+- `app.js`
+- `README.md`
 
-1. Create a public GitHub repository, for example `wc2026-platform`.
-2. Upload `index.html`, `style.css`, `app.js`, and `README.md`.
-3. Go to **Settings → Pages**.
-4. Source: **Deploy from a branch**.
-5. Branch: `main`, folder: `/root`.
-6. Save. GitHub will provide the website URL.
-
-## Change Google Sheet
-
-Edit this value in `app.js`:
-
-```js
-spreadsheetId: '1nPgDATdA6U3_OHBuJwrXQcOWT0Lq9dU25QkpdlPDE1g'
-```
+GitHub Pages should be set to branch `main`, folder `/root`.

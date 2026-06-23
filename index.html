@@ -5,23 +5,24 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>WC 2026 Predictions League</title>
   <link rel="stylesheet" href="style.css" />
-  <script defer src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
   <script defer src="app.js"></script>
 </head>
 <body>
   <header class="hero">
-    <div>
+    <div class="hero-copy">
       <p class="eyebrow">World Cup 2026</p>
       <h1>Predictions League</h1>
-      <p class="subtitle">Αποτελέσματα, βαθμολογία και προβλέψεις παικτών απευθείας από Google Sheets.</p>
+      <p class="subtitle">Live βαθμολογία, αποτελέσματα και προβλέψεις παικτών από Google Sheets.</p>
     </div>
     <button id="refreshBtn">Ανανέωση</button>
   </header>
 
   <main>
-    <section class="status" id="status">Φόρτωση δεδομένων…</section>
+    <section id="status" class="status">Φόρτωση δεδομένων…</section>
 
-    <section class="cards" id="summaryCards"></section>
+    <section id="summaryCards" class="cards"></section>
+
+    <section class="podium" id="podium"></section>
 
     <section class="panel">
       <div class="panel-title">
