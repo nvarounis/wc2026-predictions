@@ -1,27 +1,12 @@
-# WC2026 Predictions League — V13
+# WC2026 Predictions League — V14 Stable + Upcoming X Fix
 
-Fixes:
-- Ο 1ος σκόρερ πλέον εμφανίζει όλες τις επιλογές, όχι μόνο Top 8.
-- Δεν φιλτράρει ονόματα που ξεκινούν από Χ, π.χ. ΧΑΑΛΑΝΤ.
-- Προστέθηκε normalization για ΕΜΠΑΠΕ / ΧΑΑΛΑΝΤ παραλλαγές.
-
-# WC2026 Predictions League — V10
-
-Fix αποτελεσμάτων ισοπαλίας.
+Βασισμένο στη σταθερή V12/V11 λογική, χωρίς το προβληματικό player-sheet raw export του V13.
 
 ## Fix
-- Το φύλλο `ΑΠΟΤΕΛΕΣΜΑΤΑ` πλέον διαβάζεται με `export?format=csv&gid=1805121888` αντί για `gviz/tq`.
-- Αυτό διορθώνει το πρόβλημα όπου τα `X` στη στήλη E εμφανίζονταν ως κενά λόγω Google type inference.
-- Το Match Center εμφανίζει: `27/32 σωστές προβλέψεις`.
+
+- Το Upcoming Picks παραμένει κάτω από το βάθρο.
+- Όταν το Google gviz επιστρέφει κενό για πρόβλεψη που είναι Χ/Χ, τη μετρά ως X.
+- Δεν χαλάει τα στατιστικά Wisdom / Charts / Player Profiles.
+- Το Match Center συνεχίζει να δείχνει `27/32 σωστές προβλέψεις`.
 
 Ανεβάστε τα 4 αρχεία στο GitHub repository.
-
-
-## V13
-- Added Upcoming Picks section below the podium.
-- Shows 1/X/2 distribution for upcoming group-stage matches.
-- Click any outcome to see which players selected it.
-
-
-## V13
-- Upcoming Picks: οι καρτέλες παικτών διαβάζονται με raw CSV export ώστε οι προβλέψεις X/Χ να μη χάνονται από το Google type inference.

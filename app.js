@@ -57,23 +57,17 @@ function resultBreakdown(){
   return out;
 }
 
-function csvUrls(sheetName) {
-  // Πρώτα δοκιμάζουμε raw export CSV.
-  // Αυτό κρατάει τα X/Χ ως κείμενο τόσο στα ΑΠΟΤΕΛΕΣΜΑΤΑ όσο και στις καρτέλες παικτών.
-  // Το gviz/tq κάνει type inference και σε στήλες με πολλά 1/2 μπορεί να μετατρέψει τα X σε κενά.
-  const urls = [];
+function csvUrl(sheetName) {
+  // Για το φύλλο ΑΠΟΤΕΛΕΣΜΑΤΑ χρησιμοποιούμε export CSV με gid.
+  // Το gviz/tq κάνει type inference στη στήλη E και μπορεί να πετάει τα X ως κενά
+  // επειδή η ίδια στήλη περιέχει κυρίως αριθμούς 1/2. Το export CSV κρατάει το κείμενο X.
   if (sheetName === CONFIG.resultsSheet && CONFIG.resultsGid) {
     const params = new URLSearchParams({ format: 'csv', gid: CONFIG.resultsGid, cacheBust: Date.now().toString() });
-    urls.push(`https://docs.google.com/spreadsheets/d/${CONFIG.spreadsheetId}/export?${params.toString()}`);
+    return `https://docs.google.com/spreadsheets/d/${CONFIG.spreadsheetId}/export?${params.toString()}`;
   }
-  const exportParams = new URLSearchParams({ format: 'csv', sheet: sheetName, cacheBust: Date.now().toString() });
-  urls.push(`https://docs.google.com/spreadsheets/d/${CONFIG.spreadsheetId}/export?${exportParams.toString()}`);
-
-  // Fallback μόνο αν το raw export αποτύχει.
   const base = `https://docs.google.com/spreadsheets/d/${CONFIG.spreadsheetId}/gviz/tq`;
-  const gvizParams = new URLSearchParams({ tqx: 'out:csv', sheet: sheetName, cacheBust: Date.now().toString() });
-  urls.push(`${base}?${gvizParams.toString()}`);
-  return urls;
+  const params = new URLSearchParams({ tqx: 'out:csv', sheet: sheetName, cacheBust: Date.now().toString() });
+  return `${base}?${params.toString()}`;
 }
 
 function parseCsv(text) {
@@ -90,21 +84,11 @@ function parseCsv(text) {
 }
 
 async function fetchSheet(sheetName) {
-  let lastError = null;
-  for (const url of csvUrls(sheetName)) {
-    try {
-      const res = await fetch(url, { cache: 'no-store' });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const text = await res.text();
-      if (text.includes('<!DOCTYPE html') || text.includes('<html')) throw new Error('HTML αντί για CSV');
-      const rows = parseCsv(text);
-      if (rows && rows.length) return rows;
-      throw new Error('Κενό CSV');
-    } catch (err) {
-      lastError = err;
-    }
-  }
-  throw new Error(`Δεν μπόρεσα να διαβάσω το φύλλο «${sheetName}». ${lastError ? lastError.message : ''}`);
+  const res = await fetch(csvUrl(sheetName), { cache: 'no-store' });
+  if (!res.ok) throw new Error(`Δεν μπόρεσα να διαβάσω το φύλλο «${sheetName}».`);
+  const text = await res.text();
+  if (text.includes('<!DOCTYPE html') || text.includes('<html')) throw new Error(`Το Google Sheet δεν επιστρέφει CSV για το φύλλο «${sheetName}».`);
+  return parseCsv(text);
 }
 
 function parseResults(rows) {
@@ -332,8 +316,10 @@ function matchInsights(match){
     for (const r of rows) {
       if (norm((r || [])[0]) === norm(match.match)) {
         const pts = Number(clean((r || [])[2])) || 0;
-        if (pts > 0) points.push({ player, pts, pred: clean((r || [])[1]) });
-        if (sameOutcome((r || [])[1], match.result)) exact.push(player);
+        let predRaw = clean((r || [])[1]);
+        if (!predRaw && normalizeOutcome(match.result) === 'X' && pts > 0) predRaw = 'X';
+        if (pts > 0) points.push({ player, pts, pred: predRaw });
+        if (sameOutcome(predRaw, match.result)) exact.push(player);
         break;
       }
     }
@@ -350,7 +336,13 @@ function upcomingPickGroups(match){
     for (const r of rows) {
       if (norm((r || [])[0]) === norm(match.match)) {
         found = true;
-        const pred = normalizeOutcome((r || [])[1]);
+        const raw = clean((r || [])[1]);
+        let pred = normalizeOutcome(raw);
+        // Google gviz/tq κάνει type inference στη στήλη προβλέψεων των παικτών.
+        // Όταν η τιμή είναι X/Χ, μερικές φορές επιστρέφει κενό.
+        // Στα group-stage prediction φύλλα όλοι οι παίκτες έχουν συμπληρωμένη πρόβλεψη,
+        // άρα κενή τιμή σε βρεμένο αγώνα την αντιμετωπίζουμε ως X.
+        if (!pred && !raw) pred = 'X';
         if (pred === '1' || pred === 'X' || pred === '2') groups[pred].push(player);
         else groups.missing.push(player);
         break;
