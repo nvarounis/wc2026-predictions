@@ -324,6 +324,61 @@ function matchInsights(match){
   }
   return { exact, points };
 }
+
+function upcomingPickGroups(match){
+  const groups = { '1': [], 'X': [], '2': [], missing: [] };
+  for (const player of CONFIG.players) {
+    const rows = state.playerSheets[player];
+    if (!rows) continue;
+    let found = false;
+    for (const r of rows) {
+      if (norm((r || [])[0]) === norm(match.match)) {
+        found = true;
+        const pred = normalizeOutcome((r || [])[1]);
+        if (pred === '1' || pred === 'X' || pred === '2') groups[pred].push(player);
+        else groups.missing.push(player);
+        break;
+      }
+    }
+    if (!found) groups.missing.push(player);
+  }
+  return groups;
+}
+function renderUpcomingPicks(){
+  const el = $('upcomingPicks');
+  if (!el) return;
+  const status = $('upcomingStatus');
+  const unplayed = state.matches.filter(m => !isPlayedResult(m.result)).slice(0, 18);
+  const loaded = CONFIG.players.filter(p => state.playerSheets[p]).length;
+  if (status) status.textContent = loaded ? `Δείχνει τα επόμενα ${unplayed.length} ματς της Α’ φάσης · φορτώθηκαν ${loaded}/${CONFIG.players.length} παίκτες.` : 'Φορτώνονται τα φύλλα παικτών για να εμφανιστούν οι επιλογές 1/X/2.';
+  if (!unplayed.length) { el.innerHTML = '<div class="empty-state">Δεν υπάρχουν επόμενα ματς χωρίς αποτέλεσμα.</div>'; return; }
+  if (!loaded) {
+    el.innerHTML = unplayed.slice(0,6).map(m => `<div class="upcoming-card skeleton"><div><div class="match-meta">${esc(m.date)} · ${esc(m.group || '-')}</div><div class="match-title">${esc(m.match)}</div></div><div class="empty-state">Φόρτωση επιλογών…</div></div>`).join('');
+    return;
+  }
+  window.__upcomingMatches = unplayed;
+  el.innerHTML = unplayed.map((m,idx) => {
+    const g = upcomingPickGroups(m);
+    const total = CONFIG.players.length;
+    const max = Math.max(g['1'].length, g['X'].length, g['2'].length, 1);
+    const options = [['1','1'], ['X','X'], ['2','2']].map(([key,label]) => {
+      const count = g[key].length;
+      const width = Math.max(5, count / max * 100);
+      return `<button class="pick-option" onclick="openUpcomingPickModal(${idx},'${key}')"><div class="pick-option-top"><b>${label}</b><span>${count}/${total}</span></div><div class="bar-track"><div class="bar-fill" style="width:${width}%"></div></div></button>`;
+    }).join('');
+    const missing = g.missing.length ? `<div class="upcoming-missing">Χωρίς αναγνωρίσιμη πρόβλεψη: ${g.missing.length}</div>` : '';
+    return `<div class="upcoming-card"><div class="upcoming-head"><div><div class="match-meta">${esc(m.date)} · ${esc(m.time || '')} · ${esc(m.group || '-')}</div><div class="match-title">${esc(m.match)}</div></div><span class="upcoming-slot">${esc(m.slot || '')}</span></div><div class="pick-options">${options}</div>${missing}</div>`;
+  }).join('');
+}
+function openUpcomingPickModal(idx, outcome){
+  const match = (window.__upcomingMatches || [])[idx];
+  if (!match) return;
+  const groups = upcomingPickGroups(match);
+  const players = groups[outcome] || [];
+  const label = outcome === 'X' ? 'Ισοπαλία' : outcome === '1' ? 'Άσος' : 'Διπλό';
+  openModal(`<p class="small-title">Upcoming Picks</p><h2>${esc(match.match)}</h2><p class="modal-sub">${esc(label)} · ${players.length}/${CONFIG.players.length} παίκτες</p><div class="picker-grid">${players.map(p => `<button onclick="closeModal();selectPlayer('${esc(p)}')">${esc(p)}</button>`).join('') || '<em>Δεν υπάρχει παίκτης σε αυτή την επιλογή.</em>'}</div>`);
+}
+window.openUpcomingPickModal = openUpcomingPickModal;
 function renderRecentMatches(){
   const recent = state.matches.filter(m => isPlayedResult(m.result)).slice(-6).reverse();
   $('recentMatches').innerHTML = recent.map((m,idx) => {
@@ -423,6 +478,7 @@ function renderPredictionStats(){
   renderExplorer();
   renderRecentMatches();
   renderQuickStats();
+  renderUpcomingPicks();
 }
 
 
@@ -504,7 +560,7 @@ async function load() {
   try {
     const rows = await fetchSheet(CONFIG.resultsSheet);
     Object.assign(state, parseResults(rows));
-    renderCards(); renderPodium(); renderTopTen(); renderMovers(); renderLeaderboard(); renderGroupFilter(); renderMatches(); renderPlayerSelect(); renderQuickStats();
+    renderCards(); renderPodium(); renderTopTen(); renderMovers(); renderLeaderboard(); renderGroupFilter(); renderMatches(); renderPlayerSelect(); renderQuickStats(); renderUpcomingPicks();
     $('status').textContent = `Τελευταία ενημέρωση: ${new Date().toLocaleString('el-GR')}`;
     loadPredictionStats(false).catch(err => { $('statsStatus').innerHTML = `<span class="warn">Δεν φορτώθηκαν τα στατιστικά: ${esc(err.message)}</span>`; });
   } catch (err) { $('status').innerHTML = `<span class="warn">${esc(err.message)}</span><br>Πιθανή αιτία: το Google Sheet δεν έχει γίνει Publish to web ή το φύλλο «ΑΠΟΤΕΛΕΣΜΑΤΑ» δεν είναι δημοσιευμένο.`; }
@@ -512,6 +568,7 @@ async function load() {
 
 $('refreshBtn').addEventListener('click', () => { state.predictionStats = null; load(); });
 $('statsRefreshBtn').addEventListener('click', () => { state.predictionStats = null; loadPredictionStats(true); });
+$('upcomingRefreshBtn')?.addEventListener('click', () => { state.predictionStats = null; loadPredictionStats(true); });
 $('playerSearch').addEventListener('input', renderLeaderboard);
 $('groupFilter').addEventListener('change', renderMatches);
 $('playerSelect').addEventListener('change', e => renderPlayer(e.target.value));

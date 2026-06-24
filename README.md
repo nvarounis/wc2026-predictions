@@ -1,4 +1,4 @@
-# WC2026 Predictions League — V11
+# WC2026 Predictions League — V12
 
 Fixes:
 - Ο 1ος σκόρερ πλέον εμφανίζει όλες τις επιλογές, όχι μόνο Top 8.
@@ -15,3 +15,9 @@ Fix αποτελεσμάτων ισοπαλίας.
 - Το Match Center εμφανίζει: `27/32 σωστές προβλέψεις`.
 
 Ανεβάστε τα 4 αρχεία στο GitHub repository.
+
+
+## V12
+- Added Upcoming Picks section below the podium.
+- Shows 1/X/2 distribution for upcoming group-stage matches.
+- Click any outcome to see which players selected it.
