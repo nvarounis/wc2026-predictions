@@ -4,8 +4,12 @@ const CONFIG = {
   resultsGid: '1805121888',
   ignoredSheets: ['stats', 'stats2', 'stats-2', 'ΚΑΝΟΝΙΣΜΟΙ'],
   fifa: {
-    // Official FIFA public calendar endpoint. We filter the full calendar to World Cup 2026.
-    apiUrl: 'https://api.fifa.com/api/v3/calendar/matches?from=2026-06-10T00%3A00%3A00Z&language=en&count=500',
+    // Official FIFA public calendar endpoint. On GitHub Pages the browser may block
+    // direct cross-origin calls, so V19 also tries safe public CORS relays.
+    apiUrls: [
+      'https://api.fifa.com/api/v3/calendar/matches?from=2026-06-10T00%3A00%3A00Z&to=2026-07-20T23%3A59%3A59Z&language=en&count=500&idCompetition=17',
+      'https://api.fifa.com/api/v3/calendar/matches?from=2026-06-10T00%3A00%3A00Z&to=2026-07-20T23%3A59%3A59Z&language=en&count=500'
+    ],
     pageUrl: 'https://www.fifa.com/en/tournaments/mens/worldcup/canadamexicousa2026/scores-fixtures?country=GR&wtw-filter=ALL'
   },
   players: [
@@ -14,7 +18,7 @@ const CONFIG = {
 };
 
 const $ = id => document.getElementById(id);
-let state = { matches: [], progression: [], leaderboard: [], predictionStats: null, playerSheets: {}, fifaFixtures: [], fifaLoading: false, fifaError: '' };
+let state = { matches: [], progression: [], leaderboard: [], predictionStats: null, playerSheets: {}, fifaFixtures: [], fifaLoading: false, fifaError: '', fifaSource: '' };
 let charts = {};
 const FIXED = {
   round32: [3, 38],
@@ -595,10 +599,15 @@ window.openKnockoutFixtureModal = openKnockoutFixtureModal;
 function textFromAny(v){
   if (v == null) return '';
   if (typeof v === 'string' || typeof v === 'number') return String(v);
-  if (Array.isArray(v)) return v.map(textFromAny).filter(Boolean).join(' ');
+  if (Array.isArray(v)) {
+    // FIFA localization arrays are usually [{Locale:'en', Description:'...'}]. Prefer English/Greek.
+    const preferred = v.find(x => plainKey(x?.Locale || x?.Language || x?.language || '').includes('EN')) ||
+      v.find(x => plainKey(x?.Locale || x?.Language || x?.language || '').includes('EL')) || v[0];
+    return textFromAny(preferred);
+  }
   if (typeof v === 'object') {
-    const priority = ['Description','Name','ShortName','LongName','OfficialName','TeamName','CountryName','DisplayName','Text','Label','Value','Abbreviation'];
-    for (const k of priority) if (v[k]) {
+    const priority = ['Description','Name','ShortName','ShortClubName','LongName','OfficialName','TeamName','CountryName','DisplayName','Text','Label','Value','Abbreviation'];
+    for (const k of priority) if (v[k] != null) {
       const t = textFromAny(v[k]);
       if (t) return t;
     }
@@ -617,44 +626,56 @@ function pickFirst(obj, keys){
 function fifaTeamName(match, side){
   const upper = side === 'home' ? 'Home' : 'Away';
   const lower = side === 'home' ? 'home' : 'away';
-  const obj = pickFirst(match, [upper, `${upper}Team`, `${upper}TeamName`, `${upper}TeamOfficialName`, lower, `${lower}_team`, `${lower}Team`]);
-  const name = textFromAny(obj);
-  return canonicalTeam(name || clean(match[`${side}_team`] || match[`${upper}TeamName`] || ''));
+  const obj = pickFirst(match, [
+    upper, `${upper}Team`, `${upper}TeamName`, `${upper}TeamOfficialName`, `${upper}TeamCountry`,
+    `${upper}TeamShortName`, `${upper}TeamLongName`, `${upper}TeamDescription`,
+    lower, `${lower}_team`, `${lower}Team`, `${lower}TeamName`, `${lower}_team_name`, `${lower}_team_short_name`
+  ]);
+  const name = textFromAny(obj) || clean(match[`${side}_team`] || match[`${upper}TeamName`] || match[`${lower}_team_name`] || '');
+  return canonicalTeam(name);
 }
 function fifaDate(match){
-  const raw = clean(match.Date || match.MatchDate || match.DateUTC || match.MatchDateUTC || match.MatchDateTime || match.MatchDateTimeUTC || match.local_date || match.date_utc || match.DateLocal);
+  const raw = clean(match.Date || match.MatchDate || match.DateUTC || match.MatchDateUTC || match.MatchDateTime || match.MatchDateTimeUTC || match.LocalDate || match.DateLocal || match.local_date || match.date_utc || match.date || match.kickoff || '');
   if (!raw) return null;
   const d = new Date(raw);
   return isNaN(d.getTime()) ? null : d;
 }
 function normalizeFifaMatch(match){
-  const stage = textFromAny(pickFirst(match, ['StageName','Stage','stage_name','StageDescription','Phase','RoundName']));
-  const group = textFromAny(pickFirst(match, ['GroupName','Group','group_name']));
-  const competition = textFromAny(pickFirst(match, ['CompetitionName','Competition','competition_name']));
-  const season = textFromAny(pickFirst(match, ['SeasonName','Season','season_name']));
-  const venue = textFromAny(pickFirst(match, ['Stadium','StadiumName','Venue','stadium_name']));
-  const city = textFromAny(pickFirst(match, ['City','CityName','city_name','HostCity']));
-  const status = textFromAny(pickFirst(match, ['MatchStatus','Status','StatusName','match_status','MatchStatusName']));
+  const stage = textFromAny(pickFirst(match, ['StageName','Stage','stage_name','stage','StageDescription','Phase','RoundName','round_name']));
+  const group = textFromAny(pickFirst(match, ['GroupName','Group','group_name','group']));
+  const competition = textFromAny(pickFirst(match, ['CompetitionName','Competition','competition_name','CompetitionCode','CompetitionKey']));
+  const season = textFromAny(pickFirst(match, ['SeasonName','Season','season_name','SeasonCode','SeasonKey']));
+  const venue = textFromAny(pickFirst(match, ['Stadium','StadiumName','Venue','stadium_name','venue_name']));
+  const city = textFromAny(pickFirst(match, ['City','CityName','city_name','HostCity','host_city']));
+  const status = textFromAny(pickFirst(match, ['MatchStatus','Status','StatusName','match_status','MatchStatusName','status']));
   const date = fifaDate(match);
   const home = fifaTeamName(match, 'home');
   const away = fifaTeamName(match, 'away');
-  const matchNo = clean(match.MatchNumber || match.MatchNo || match.match_number || match.IdMatch || match.id_match || '');
+  const matchNo = clean(match.MatchNumber || match.MatchNo || match.match_number || match.IdMatch || match.id_match || match.id || '');
   return { raw:match, date, home, away, stage:clean(stage), group:clean(group), competition:clean(competition), season:clean(season), venue:clean(venue), city:clean(city), status:clean(status), matchNo };
 }
 function flattenMatchArray(data){
   if (Array.isArray(data)) return data;
-  for (const key of ['Results','results','Matches','matches','Items','items','data']) {
-    if (Array.isArray(data?.[key])) return data[key];
+  if (!data || typeof data !== 'object') return [];
+  for (const key of ['Results','results','Matches','matches','Items','items','data','Data']) {
+    if (Array.isArray(data[key])) return data[key];
+  }
+  // Some JSON wrappers put the array one level deeper.
+  for (const val of Object.values(data)) {
+    const arr = flattenMatchArray(val);
+    if (arr.length) return arr;
   }
   return [];
 }
 function isWorldCup2026Match(m){
-  const blob = plainKey([m.competition, m.season, m.stage].join(' '));
-  return blob.includes('WORLD CUP') && (blob.includes('2026') || blob.includes('CANADA') || blob.includes('MEXICO') || blob.includes('USA'));
+  const blob = plainKey([m.competition, m.season, m.stage, m.raw?.CompetitionName, m.raw?.SeasonName].join(' '));
+  const ids = [m.raw?.IdCompetition, m.raw?.idCompetition, m.raw?.CompetitionId, m.raw?.IdCup].map(x=>clean(x));
+  if (ids.includes('17')) return true; // FIFA men's World Cup competition id used by FIFA calendar APIs.
+  return blob.includes('WORLD CUP') && (blob.includes('2026') || blob.includes('WORLD CUP 26') || blob.includes('CANADA') || blob.includes('MEXICO') || blob.includes('USA'));
 }
 function isFifaFinished(m){
   const s = plainKey(m.status);
-  return ['PLAYED','FINISHED','FULL TIME','FULLTIME','FT','COMPLETED','RESULT','FINAL'].some(x => s.includes(x)) || s === '0';
+  return ['PLAYED','FINISHED','FULL TIME','FULLTIME','FT','COMPLETED','RESULT','FINAL'].some(x => s.includes(x)) || s === '0' || s === '3';
 }
 function fifaNextPickMeta(stage){
   const s = plainKey(stage);
@@ -671,17 +692,54 @@ function formatFifaDate(d){
   try { return new Intl.DateTimeFormat('el-GR', { dateStyle:'short', timeStyle:'short' }).format(d); }
   catch { return d.toLocaleString('el-GR'); }
 }
+function fifaUrlCandidates(){
+  return CONFIG.fifa.apiUrls || (CONFIG.fifa.apiUrl ? [CONFIG.fifa.apiUrl] : []);
+}
+function proxiedUrls(url){
+  return [
+    { url, label:'FIFA direct' },
+    { url:`https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`, label:'FIFA μέσω AllOrigins' },
+    { url:`https://corsproxy.io/?${encodeURIComponent(url)}`, label:'FIFA μέσω corsproxy.io' }
+  ];
+}
+async function fetchJsonWithTimeout(url, ms=12000){
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), ms);
+  try {
+    const res = await fetch(url, { cache:'no-store', signal:ctrl.signal, headers:{ 'Accept':'application/json,text/plain,*/*' } });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const txt = await res.text();
+    if (txt.includes('<!DOCTYPE html') || txt.includes('<html')) throw new Error('HTML αντί για JSON');
+    return JSON.parse(txt);
+  } finally { clearTimeout(t); }
+}
 async function fetchFifaFixtures(){
-  const res = await fetch(`${CONFIG.fifa.apiUrl}&cacheBust=${Date.now()}`, { cache:'no-store' });
-  if (!res.ok) throw new Error(`FIFA API HTTP ${res.status}`);
-  const data = await res.json();
-  const arr = flattenMatchArray(data).map(normalizeFifaMatch).filter(m => m.home || m.away);
-  const filtered = arr.filter(isWorldCup2026Match);
-  return (filtered.length ? filtered : arr).sort((a,b) => (a.date?.getTime() || 0) - (b.date?.getTime() || 0));
+  const errors = [];
+  for (const baseUrl of fifaUrlCandidates()) {
+    for (const source of proxiedUrls(baseUrl)) {
+      const url = `${source.url}${source.url.includes('?') ? '&' : '?'}cacheBust=${Date.now()}`;
+      try {
+        const data = await fetchJsonWithTimeout(url);
+        const arr = flattenMatchArray(data).map(normalizeFifaMatch).filter(m => m.home || m.away);
+        const filtered = arr.filter(isWorldCup2026Match);
+        const finalArr = (filtered.length ? filtered : arr)
+          .sort((a,b) => (a.date?.getTime() || 0) - (b.date?.getTime() || 0));
+        if (finalArr.length) {
+          state.fifaSource = source.label;
+          return finalArr;
+        }
+        errors.push(`${source.label}: δεν βρέθηκαν matches`);
+      } catch (err) {
+        errors.push(`${source.label}: ${err.message || err}`);
+      }
+    }
+  }
+  throw new Error(errors.slice(-3).join(' | ') || 'άγνωστο σφάλμα FIFA API');
 }
 function loadFifaFixtures(){
   state.fifaLoading = true;
   state.fifaError = '';
+  state.fifaSource = '';
   fetchFifaFixtures().then(fixtures => {
     state.fifaFixtures = fixtures;
     state.fifaLoading = false;
@@ -706,14 +764,21 @@ function renderFifaUpcomingFixtures(){
   const status = $('upcomingStatus');
   if (!el) return false;
   if (state.fifaLoading && !(state.fifaFixtures || []).length) {
-    if (status) status.textContent = 'Φόρτωση επόμενων αγώνων από το επίσημο FIFA API…';
-    el.innerHTML = '<div class="empty-state">Φορτώνουν οι επόμενοι αγώνες από FIFA…</div>';
+    if (status) status.textContent = 'Φόρτωση επόμενων αγώνων από FIFA…';
+    el.innerHTML = '<div class="empty-state">Φορτώνουν οι επόμενοι αγώνες από FIFA. Αν ο browser μπλοκάρει το FIFA API, θα γίνει αυτόματα δοκιμή μέσω proxy.</div>';
     return true;
   }
   const fixtures = upcomingFifaFixtures();
-  if (!fixtures.length) return false;
+  if (!fixtures.length) {
+    if (state.fifaError) {
+      if (status) status.textContent = 'Δεν φορτώθηκαν επόμενοι αγώνες από FIFA.';
+      el.innerHTML = `<div class="empty-state phase-note"><b>Δεν μπόρεσα να φορτώσω τα ματς από FIFA.</b><br>Σφάλμα: ${esc(state.fifaError)}<br>Άνοιξε το <a href="${CONFIG.fifa.pageUrl}" target="_blank" rel="noopener">επίσημο πρόγραμμα της FIFA</a> ή πάτησε ξανά «Ανανέωση FIFA».</div>`;
+      return true;
+    }
+    return false;
+  }
   const loaded = state.predictionStats?.loadedPlayers || CONFIG.players.filter(p => state.playerSheets[p]).length || CONFIG.players.length;
-  if (status) status.textContent = `Επόμενοι αγώνες από FIFA: ${fixtures.length}. ${state.predictionStats ? `Φορτώθηκαν ${loaded}/${CONFIG.players.length} παίκτες.` : 'Φορτώνονται οι προβλέψεις παικτών…'}`;
+  if (status) status.textContent = `Επόμενοι αγώνες από FIFA: ${fixtures.length}${state.fifaSource ? ` · Πηγή: ${state.fifaSource}` : ''}. ${state.predictionStats ? `Φορτώθηκαν ${loaded}/${CONFIG.players.length} παίκτες.` : 'Φορτώνονται οι προβλέψεις παικτών…'}`;
   const cards = fixtures.map(f => {
     const meta = fifaNextPickMeta(f.stage);
     return {
@@ -724,7 +789,7 @@ function renderFifaUpcomingFixtures(){
     };
   });
   window.__fifaFixtures = cards;
-  el.innerHTML = `<div class="empty-state phase-note">Τα επόμενα ματς έρχονται απευθείας από το επίσημο FIFA API. Οι μπάρες δείχνουν πόσοι παίκτες έχουν κάθε ομάδα να περνάει στην επόμενη φάση του δικού μας παιχνιδιού.</div>` +
+  el.innerHTML = `<div class="empty-state phase-note">Τα επόμενα ματς έρχονται από FIFA. Οι μπάρες δείχνουν πόσοι παίκτες έχουν κάθε ομάδα να περνάει στην επόμενη φάση του δικού μας παιχνιδιού.</div>` +
     cards.map((f, idx) => {
       const max = Math.max(1, f.aPlayers.length, f.bPlayers.length);
       const option = (side, team, players) => {
