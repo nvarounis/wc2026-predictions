@@ -3,13 +3,18 @@ const CONFIG = {
   resultsSheet: 'ΑΠΟΤΕΛΕΣΜΑΤΑ',
   resultsGid: '1805121888',
   ignoredSheets: ['stats', 'stats2', 'stats-2', 'ΚΑΝΟΝΙΣΜΟΙ'],
+  fifa: {
+    // Official FIFA public calendar endpoint. We filter the full calendar to World Cup 2026.
+    apiUrl: 'https://api.fifa.com/api/v3/calendar/matches?from=2026-06-10T00%3A00%3A00Z&language=en&count=500',
+    pageUrl: 'https://www.fifa.com/en/tournaments/mens/worldcup/canadamexicousa2026/scores-fixtures?country=GR&wtw-filter=ALL'
+  },
   players: [
     'ΑΝΑΣΤΑΣΙΑΔΗΣ','ΑΡΒΑΝΙΤΟΠΟΥΛΟΣ','ΒΑΡΟΥΝΗΣ','ΒΕΛΟΥΔΟΣ 1','ΒΕΛΟΥΔΟΣ 2','ΓΚΟΥΛΟΥΣΗΣ Ν','ΓΚΟΥΛΟΥΣΗΣ Χ','ΔΗΜΑ','ΖΑΪΡΗΣ Γ','ΖΑΪΡΗΣ Ν','ΖΙΑΚΑΣ','ΗΛΙΟΠΟΥΛΟΣ','ΚΑΤΣΑΪΤΗΣ','ΚΕΛΛΑΡΗΣ Β','ΚΕΛΛΑΡΗΣ Δ','ΚΟΥΤΟΥΛΑΣ','ΚΟΥΤΣΟΥΦΛΑΚΗΣ','ΛΟΥΒΙΤΑΚΗΣ','ΜΑΡ','ΜΗΛΑΣ','ΝΤΑΒΛΟΥΡΟΣ','ΠΡΟΕΣΤΟΣ','ΣΒΟΛΟΠΟΥΛΟΣ Λ','ΣΒΟΛΟΠΟΥΛΟΣ Π','ΣΒΟΛΟΠΟΥΛΟΣ Τ','ΣΚΙΑΣ','ΣΚΟΥΡΤΑΣ Γ','ΣΚΟΥΡΤΑΣ Φ','ΣΦΗΚΑΣ','ΤΡΙΑΝΤΑΦΥΛΛΑΚΗΣ','ΤΣΟΓΚΑΣ','ΧΑΤΖΗΤΙΜΠΑΣ'
   ]
 };
 
 const $ = id => document.getElementById(id);
-let state = { matches: [], progression: [], leaderboard: [], predictionStats: null, playerSheets: {} };
+let state = { matches: [], progression: [], leaderboard: [], predictionStats: null, playerSheets: {}, fifaFixtures: [], fifaLoading: false, fifaError: '' };
 let charts = {};
 const FIXED = {
   round32: [3, 38],
@@ -47,6 +52,70 @@ function normalizeOutcome(v){
 }
 function isPlayedResult(v){ return !!normalizeOutcome(v); }
 function sameOutcome(a, b){ const aa = normalizeOutcome(a), bb = normalizeOutcome(b); return !!aa && aa === bb; }
+
+function plainKey(v){
+  return clean(v)
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[’'`´]/g, '')
+    .replace(/[.\-_/(),]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toUpperCase();
+}
+const TEAM_ALIASES = {
+  'ARGENTINA':'ΑΡΓΕΝΤΙΝΗ', 'ΑΡΓΕΝΙΝΗ':'ΑΡΓΕΝΤΙΝΗ',
+  'BRAZIL':'ΒΡΑΖΙΛΙΑ',
+  'FRANCE':'ΓΑΛΛΙΑ',
+  'SPAIN':'ΙΣΠΑΝΙΑ',
+  'PORTUGAL':'ΠΟΡΤΟΓΑΛΙΑ', 'ΠΟΡΤΟΓΑ':'ΠΟΡΤΟΓΑΛΙΑ',
+  'ENGLAND':'ΑΓΓΛΙΑ',
+  'GERMANY':'ΓΕΡΜΑΝΙΑ',
+  'NETHERLANDS':'ΟΛΛΑΝΔΙΑ', 'HOLLAND':'ΟΛΛΑΝΔΙΑ',
+  'BELGIUM':'ΒΕΛΓΙΟ',
+  'MEXICO':'ΜΕΞΙΚΟ',
+  'TURKIYE':'ΤΟΥΡΚΙΑ', 'TURKEY':'ΤΟΥΡΚΙΑ',
+  'SWITZERLAND':'ΕΛΒΕΤΙΑ',
+  'NORWAY':'ΝΟΡΒΗΓΙΑ',
+  'UNITED STATES':'Η.Π.Α.', 'UNITED STATES OF AMERICA':'Η.Π.Α.', 'USA':'Η.Π.Α.', 'USMNT':'Η.Π.Α.', 'ΗΠΑ':'Η.Π.Α.', 'Η Π Α':'Η.Π.Α.',
+  'CANADA':'ΚΑΝΑΔΑΣ',
+  'MOROCCO':'ΜΑΡΟΚΟ',
+  'COLOMBIA':'ΚΟΛΟΜΒΙΑ',
+  'CROATIA':'ΚΡΟΑΤΙΑ',
+  'URUGUAY':'ΟΥΡΟΥΓΟΥΑΗ', 'ΟΥΡΟΥΓΟΥΗ':'ΟΥΡΟΥΓΟΥΑΗ',
+  'KOREA REPUBLIC':'ΝΟΤΙΑ ΚΟΡΕΑ', 'SOUTH KOREA':'ΝΟΤΙΑ ΚΟΡΕΑ', 'REPUBLIC OF KOREA':'ΝΟΤΙΑ ΚΟΡΕΑ', 'KOREA':'ΝΟΤΙΑ ΚΟΡΕΑ', 'Ν ΚΟΡΕΑ':'ΝΟΤΙΑ ΚΟΡΕΑ', 'ΚΟΡΕΑ':'ΝΟΤΙΑ ΚΟΡΕΑ',
+  'SENEGAL':'ΣΕΝΕΓΑΛΗ', 'ΣΕΝΑΓΑΛΗ':'ΣΕΝΕΓΑΛΗ',
+  'CZECHIA':'ΤΣΕΧΙΑ', 'CZECH REPUBLIC':'ΤΣΕΧΙΑ', 'TΣΕΧΙΑ':'ΤΣΕΧΙΑ',
+  'JAPAN':'ΙΑΠΩΝΙΑ',
+  'EGYPT':'ΑΙΓΥΠΤΟΣ',
+  'ECUADOR':'ΙΣΗΜΕΡΙΝΟΣ', 'ΕΚΟΥΑΔΟΡ':'ΙΣΗΜΕΡΙΝΟΣ',
+  'AUSTRIA':'ΑΥΣΤΡΙΑ', 'ΑΣΤΡΙΑ':'ΑΥΣΤΡΙΑ',
+  'COTE D IVOIRE':'ΑΚΤΗ ΕΛΕΦΑΝΤΟΣΤΟΥ', 'COTE DIVOIRE':'ΑΚΤΗ ΕΛΕΦΑΝΤΟΣΤΟΥ', 'IVORY COAST':'ΑΚΤΗ ΕΛΕΦΑΝΤΟΣΤΟΥ',
+  'ALGERIA':'ΑΛΓΕΡΙΑ',
+  'BOSNIA HERZEGOVINA':'ΒΟΣΝΙΑ ΕΡΖΕΓΟΒΙΝΗ', 'BOSNIA AND HERZEGOVINA':'ΒΟΣΝΙΑ ΕΡΖΕΓΟΒΙΝΗ', 'BOSNIA':'ΒΟΣΝΙΑ ΕΡΖΕΓΟΒΙΝΗ', 'ΒΟΣΝΙΑ':'ΒΟΣΝΙΑ ΕΡΖΕΓΟΒΙΝΗ',
+  'SCOTLAND':'ΣΚΩΤΙΑ',
+  'SWEDEN':'ΣΟΥΗΔΙΑ',
+  'PARAGUAY':'ΠΑΡΑΓΟΥΑΗ',
+  'IRAN':'ΙΡΑΝ', 'IRAN ISLAMIC REPUBLIC OF':'ΙΡΑΝ',
+  'GHANA':'ΓΚΑΝΑ',
+  'SAUDI ARABIA':'ΣΑΟΥΔΙΚΗ ΑΡΑΒΙΑ',
+  'AUSTRALIA':'ΑΥΣΤΡΑΛΙΑ',
+  'DR CONGO':'ΛΑΪΚΗ ΔΗΜΟΚΡΑΤΙΑ ΚΟΝΓΚΟ', 'CONGO DR':'ΛΑΪΚΗ ΔΗΜΟΚΡΑΤΙΑ ΚΟΝΓΚΟ', 'DEMOCRATIC REPUBLIC OF THE CONGO':'ΛΑΪΚΗ ΔΗΜΟΚΡΑΤΙΑ ΚΟΝΓΚΟ', 'CONGO':'ΛΑΪΚΗ ΔΗΜΟΚΡΑΤΙΑ ΚΟΝΓΚΟ', 'ΛΔ ΚΟΓΚΟ':'ΛΑΪΚΗ ΔΗΜΟΚΡΑΤΙΑ ΚΟΝΓΚΟ', 'Λ Δ ΚΟΓΚΟ':'ΛΑΪΚΗ ΔΗΜΟΚΡΑΤΙΑ ΚΟΝΓΚΟ',
+  'QATAR':'ΚΑΤΑΡ',
+  'TUNISIA':'ΤΥΝΗΣΙΑ',
+  'CAPE VERDE':'ΠΡΑΣΙΝΟ ΑΚΡΩΤΗΡΙΟ', 'CABO VERDE':'ΠΡΑΣΙΝΟ ΑΚΡΩΤΗΡΙΟ', 'ΠΡΑΣΙΝΟ ΑΚΡΩΤΗΡΙ':'ΠΡΑΣΙΝΟ ΑΚΡΩΤΗΡΙΟ',
+  'UZBEKISTAN':'ΟΥΖΜΠΕΚΙΣΤΑΝ',
+  'SOUTH AFRICA':'ΝΟΤΙΑ ΑΦΡΙΚΗ',
+  'HAITI':'ΑΪΤΗ', 'HAÏTI':'ΑΪΤΗ',
+  'NEW ZEALAND':'ΝΕΑ ΖΗΛΑΝΔΙΑ',
+  'CURACAO':'ΚΟΥΡΑΣΑΟ', 'CURAÇAO':'ΚΟΥΡΑΣΑΟ', 'CURAÇAO':'ΚΟΥΡΑΣΑΟ'
+};
+function canonicalTeam(v){
+  const raw = clean(v);
+  if (!raw) return '';
+  const key = plainKey(raw);
+  return TEAM_ALIASES[key] || raw;
+}
+function canonicalKey(v){ return plainKey(canonicalTeam(v)); }
 function resultBreakdown(){
   const out = { '1':0, 'X':0, '2':0, other:0, played:0, total: state.matches.length };
   for (const m of state.matches) {
@@ -416,8 +485,8 @@ function activeProgressionRound(){
 function getPickPlayersForTeam(type, team){
   const map = state.predictionStats?.picks?.[type];
   if (!map) return [];
-  const target = norm(team);
-  for (const [label, players] of map.entries()) if (norm(label) === target) return [...players].sort((a,b)=>a.localeCompare(b,'el'));
+  const target = canonicalKey(team);
+  for (const [label, players] of map.entries()) if (canonicalKey(label) === target) return [...players].sort((a,b)=>a.localeCompare(b,'el'));
   return [];
 }
 function renderQualificationPicks(round){
@@ -522,17 +591,175 @@ function openKnockoutFixtureModal(idx, side){
 }
 window.openKnockoutFixtureModal = openKnockoutFixtureModal;
 
+
+function textFromAny(v){
+  if (v == null) return '';
+  if (typeof v === 'string' || typeof v === 'number') return String(v);
+  if (Array.isArray(v)) return v.map(textFromAny).filter(Boolean).join(' ');
+  if (typeof v === 'object') {
+    const priority = ['Description','Name','ShortName','LongName','OfficialName','TeamName','CountryName','DisplayName','Text','Label','Value','Abbreviation'];
+    for (const k of priority) if (v[k]) {
+      const t = textFromAny(v[k]);
+      if (t) return t;
+    }
+    if (v.en) return textFromAny(v.en);
+    if (v['en-GB']) return textFromAny(v['en-GB']);
+    if (v.el) return textFromAny(v.el);
+  }
+  return '';
+}
+function pickFirst(obj, keys){
+  for (const k of keys) {
+    if (obj && obj[k] != null && clean(textFromAny(obj[k]))) return obj[k];
+  }
+  return '';
+}
+function fifaTeamName(match, side){
+  const upper = side === 'home' ? 'Home' : 'Away';
+  const lower = side === 'home' ? 'home' : 'away';
+  const obj = pickFirst(match, [upper, `${upper}Team`, `${upper}TeamName`, `${upper}TeamOfficialName`, lower, `${lower}_team`, `${lower}Team`]);
+  const name = textFromAny(obj);
+  return canonicalTeam(name || clean(match[`${side}_team`] || match[`${upper}TeamName`] || ''));
+}
+function fifaDate(match){
+  const raw = clean(match.Date || match.MatchDate || match.DateUTC || match.MatchDateUTC || match.MatchDateTime || match.MatchDateTimeUTC || match.local_date || match.date_utc || match.DateLocal);
+  if (!raw) return null;
+  const d = new Date(raw);
+  return isNaN(d.getTime()) ? null : d;
+}
+function normalizeFifaMatch(match){
+  const stage = textFromAny(pickFirst(match, ['StageName','Stage','stage_name','StageDescription','Phase','RoundName']));
+  const group = textFromAny(pickFirst(match, ['GroupName','Group','group_name']));
+  const competition = textFromAny(pickFirst(match, ['CompetitionName','Competition','competition_name']));
+  const season = textFromAny(pickFirst(match, ['SeasonName','Season','season_name']));
+  const venue = textFromAny(pickFirst(match, ['Stadium','StadiumName','Venue','stadium_name']));
+  const city = textFromAny(pickFirst(match, ['City','CityName','city_name','HostCity']));
+  const status = textFromAny(pickFirst(match, ['MatchStatus','Status','StatusName','match_status','MatchStatusName']));
+  const date = fifaDate(match);
+  const home = fifaTeamName(match, 'home');
+  const away = fifaTeamName(match, 'away');
+  const matchNo = clean(match.MatchNumber || match.MatchNo || match.match_number || match.IdMatch || match.id_match || '');
+  return { raw:match, date, home, away, stage:clean(stage), group:clean(group), competition:clean(competition), season:clean(season), venue:clean(venue), city:clean(city), status:clean(status), matchNo };
+}
+function flattenMatchArray(data){
+  if (Array.isArray(data)) return data;
+  for (const key of ['Results','results','Matches','matches','Items','items','data']) {
+    if (Array.isArray(data?.[key])) return data[key];
+  }
+  return [];
+}
+function isWorldCup2026Match(m){
+  const blob = plainKey([m.competition, m.season, m.stage].join(' '));
+  return blob.includes('WORLD CUP') && (blob.includes('2026') || blob.includes('CANADA') || blob.includes('MEXICO') || blob.includes('USA'));
+}
+function isFifaFinished(m){
+  const s = plainKey(m.status);
+  return ['PLAYED','FINISHED','FULL TIME','FULLTIME','FT','COMPLETED','RESULT','FINAL'].some(x => s.includes(x)) || s === '0';
+}
+function fifaNextPickMeta(stage){
+  const s = plainKey(stage);
+  if (s.includes('ROUND OF 32') || s.includes('LAST 32') || s.includes('32')) return { pickType:'round16', targetLabel:'Στους 16', verb:'στους 16' };
+  if (s.includes('ROUND OF 16') || s.includes('LAST 16') || s.includes('16')) return { pickType:'quarters', targetLabel:'Στους 8', verb:'στους 8' };
+  if (s.includes('QUARTER')) return { pickType:'semis', targetLabel:'Στους 4', verb:'στους 4' };
+  if (s.includes('SEMI')) return { pickType:'finalists', targetLabel:'Τελικό', verb:'στον τελικό' };
+  if (s.includes('THIRD') || s.includes('3RD') || s.includes('PLACE')) return { pickType:'thirdPlaces', targetLabel:'Νικητής μικρού τελικού', verb:'νικητή μικρού τελικού' };
+  if (s.includes('FINAL')) return { pickType:'champions', targetLabel:'Πρωταθλητής', verb:'πρωταθλήτρια' };
+  return { pickType:'round16', targetLabel:'Επόμενη φάση', verb:'στην επόμενη φάση' };
+}
+function formatFifaDate(d){
+  if (!d) return '-';
+  try { return new Intl.DateTimeFormat('el-GR', { dateStyle:'short', timeStyle:'short' }).format(d); }
+  catch { return d.toLocaleString('el-GR'); }
+}
+async function fetchFifaFixtures(){
+  const res = await fetch(`${CONFIG.fifa.apiUrl}&cacheBust=${Date.now()}`, { cache:'no-store' });
+  if (!res.ok) throw new Error(`FIFA API HTTP ${res.status}`);
+  const data = await res.json();
+  const arr = flattenMatchArray(data).map(normalizeFifaMatch).filter(m => m.home || m.away);
+  const filtered = arr.filter(isWorldCup2026Match);
+  return (filtered.length ? filtered : arr).sort((a,b) => (a.date?.getTime() || 0) - (b.date?.getTime() || 0));
+}
+function loadFifaFixtures(){
+  state.fifaLoading = true;
+  state.fifaError = '';
+  fetchFifaFixtures().then(fixtures => {
+    state.fifaFixtures = fixtures;
+    state.fifaLoading = false;
+    renderUpcomingPicks();
+  }).catch(err => {
+    state.fifaFixtures = [];
+    state.fifaLoading = false;
+    state.fifaError = err.message || String(err);
+    renderUpcomingPicks();
+  });
+}
+function upcomingFifaFixtures(){
+  const now = new Date();
+  const grace = new Date(now.getTime() - 3 * 60 * 60 * 1000);
+  return (state.fifaFixtures || [])
+    .filter(m => (m.home || m.away) && !isFifaFinished(m) && (!m.date || m.date >= grace))
+    .sort((a,b) => (a.date?.getTime() || 0) - (b.date?.getTime() || 0))
+    .slice(0, 8);
+}
+function renderFifaUpcomingFixtures(){
+  const el = $('upcomingPicks');
+  const status = $('upcomingStatus');
+  if (!el) return false;
+  if (state.fifaLoading && !(state.fifaFixtures || []).length) {
+    if (status) status.textContent = 'Φόρτωση επόμενων αγώνων από το επίσημο FIFA API…';
+    el.innerHTML = '<div class="empty-state">Φορτώνουν οι επόμενοι αγώνες από FIFA…</div>';
+    return true;
+  }
+  const fixtures = upcomingFifaFixtures();
+  if (!fixtures.length) return false;
+  const loaded = state.predictionStats?.loadedPlayers || CONFIG.players.filter(p => state.playerSheets[p]).length || CONFIG.players.length;
+  if (status) status.textContent = `Επόμενοι αγώνες από FIFA: ${fixtures.length}. ${state.predictionStats ? `Φορτώθηκαν ${loaded}/${CONFIG.players.length} παίκτες.` : 'Φορτώνονται οι προβλέψεις παικτών…'}`;
+  const cards = fixtures.map(f => {
+    const meta = fifaNextPickMeta(f.stage);
+    return {
+      ...f,
+      meta,
+      aPlayers: state.predictionStats && f.home ? getPickPlayersForTeam(meta.pickType, f.home) : [],
+      bPlayers: state.predictionStats && f.away ? getPickPlayersForTeam(meta.pickType, f.away) : []
+    };
+  });
+  window.__fifaFixtures = cards;
+  el.innerHTML = `<div class="empty-state phase-note">Τα επόμενα ματς έρχονται απευθείας από το επίσημο FIFA API. Οι μπάρες δείχνουν πόσοι παίκτες έχουν κάθε ομάδα να περνάει στην επόμενη φάση του δικού μας παιχνιδιού.</div>` +
+    cards.map((f, idx) => {
+      const max = Math.max(1, f.aPlayers.length, f.bPlayers.length);
+      const option = (side, team, players) => {
+        const count = players.length;
+        const width = Math.max(5, count / max * 100);
+        return `<button class="pick-option" onclick="openFifaFixtureModal(${idx},'${side}')"><div class="pick-option-top"><b>${esc(team || 'TBC')}</b><span>${state.predictionStats ? `${count}/${loaded}` : '…'}</span></div><small>το έχουν ${esc(f.meta.verb)}</small><div class="bar-track"><div class="bar-fill" style="width:${state.predictionStats ? width : 5}%"></div></div></button>`;
+      };
+      const place = [f.venue, f.city].filter(Boolean).join(' · ');
+      const metaLine = [formatFifaDate(f.date), f.stage || 'Knockout', place].filter(Boolean).join(' · ');
+      return `<div class="upcoming-card"><div class="upcoming-head"><div><div class="match-meta">${esc(metaLine)}</div><div class="match-title">${esc(f.home || 'TBC')} — ${esc(f.away || 'TBC')}</div></div><span class="upcoming-slot">${esc(f.meta.targetLabel)}</span></div><div class="pick-options">${option('A', f.home, f.aPlayers)}${option('B', f.away, f.bPlayers)}</div></div>`;
+    }).join('');
+  return true;
+}
+function openFifaFixtureModal(idx, side){
+  const item = (window.__fifaFixtures || [])[idx];
+  if (!item) return;
+  const team = side === 'A' ? item.home : item.away;
+  const players = side === 'A' ? item.aPlayers : item.bPlayers;
+  const missed = CONFIG.players.filter(p => !players.includes(p)).sort((a,b)=>a.localeCompare(b,'el'));
+  openModal(`<p class="small-title">${esc(item.stage || 'FIFA fixture')}</p><h2>${esc(item.home || 'TBC')} — ${esc(item.away || 'TBC')}</h2><p class="modal-sub">${esc(formatFifaDate(item.date))} · ${esc(team)} · ${players.length}/${CONFIG.players.length} παίκτες το έχουν ${esc(item.meta.verb)}</p><h3>Το έχουν</h3><div class="picker-grid">${players.map(p => `<button onclick="closeModal();selectPlayer('${esc(p)}')">${esc(p)}</button>`).join('') || '<em>Κανένας παίκτης.</em>'}</div><h3>Δεν το έχουν</h3><div class="picker-grid muted-grid">${missed.map(p => `<button onclick="closeModal();selectPlayer('${esc(p)}')">${esc(p)}</button>`).join('')}</div>`);
+}
+window.openFifaFixtureModal = openFifaFixtureModal;
+
 function renderUpcomingPicks(){
   const el = $('upcomingPicks');
   if (!el) return;
   const status = $('upcomingStatus');
+  if (renderFifaUpcomingFixtures()) return;
   const activeRound = activeProgressionRound();
   if (activeRound && renderKnockoutFixtures(activeRound)) return;
   if (activeRound && renderQualificationPicks(activeRound)) return;
   const unplayed = state.matches.filter(m => !isPlayedResult(m.result)).slice(0, 18);
   const loaded = CONFIG.players.filter(p => state.playerSheets[p]).length;
   if (status) status.textContent = loaded ? `Δείχνει τα επόμενα ${unplayed.length} ματς της Α’ φάσης · φορτώθηκαν ${loaded}/${CONFIG.players.length} παίκτες.` : 'Φορτώνονται τα φύλλα παικτών για να εμφανιστούν οι επιλογές 1/X/2.';
-  if (!unplayed.length) { el.innerHTML = '<div class="empty-state">Δεν υπάρχουν επόμενα ματς για εμφάνιση. Μόλις συμπληρωθούν προκρίσεις στη στήλη G του φύλλου ΑΠΟΤΕΛΕΣΜΑΤΑ, θα εμφανιστούν εδώ.</div>'; return; }
+  if (!unplayed.length) { el.innerHTML = `<div class="empty-state">Δεν υπάρχουν επόμενα ματς για εμφάνιση.${state.fifaError ? ` Δεν φορτώθηκε το FIFA API: ${esc(state.fifaError)}.` : ''} Μπορείς πάντα να δεις το <a href="${CONFIG.fifa.pageUrl}" target="_blank" rel="noopener">επίσημο πρόγραμμα της FIFA</a>.</div>`; return; }
   if (!loaded) {
     el.innerHTML = unplayed.slice(0,6).map(m => `<div class="upcoming-card skeleton"><div><div class="match-meta">${esc(m.date)} · ${esc(m.group || '-')}</div><div class="match-title">${esc(m.match)}</div></div><div class="empty-state">Φόρτωση επιλογών…</div></div>`).join('');
     return;
@@ -750,6 +977,7 @@ async function load() {
   try {
     const rows = await fetchSheet(CONFIG.resultsSheet);
     Object.assign(state, parseResults(rows));
+    loadFifaFixtures();
     renderCards(); renderPodium(); renderTopTen(); renderMovers(); renderLeaderboard(); renderGroupFilter(); renderMatches(); renderPlayerSelect(); renderQuickStats(); renderUpcomingPicks();
     $('status').textContent = `Τελευταία ενημέρωση: ${new Date().toLocaleString('el-GR')}`;
     loadPredictionStats(false).catch(err => { $('statsStatus').innerHTML = `<span class="warn">Δεν φορτώθηκαν τα στατιστικά: ${esc(err.message)}</span>`; });
@@ -758,7 +986,7 @@ async function load() {
 
 $('refreshBtn').addEventListener('click', () => { state.predictionStats = null; load(); });
 $('statsRefreshBtn').addEventListener('click', () => { state.predictionStats = null; loadPredictionStats(true); });
-$('upcomingRefreshBtn')?.addEventListener('click', () => { state.predictionStats = null; loadPredictionStats(true); });
+$('upcomingRefreshBtn')?.addEventListener('click', () => { state.predictionStats = null; loadFifaFixtures(); loadPredictionStats(true); });
 $('playerSearch').addEventListener('input', renderLeaderboard);
 $('groupFilter').addEventListener('change', renderMatches);
 $('playerSelect').addEventListener('change', e => renderPlayer(e.target.value));
