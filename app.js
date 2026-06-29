@@ -9,7 +9,7 @@ const CONFIG = {
 };
 
 const $ = id => document.getElementById(id);
-let state = { matches: [], leaderboard: [], predictionStats: null, playerSheets: {} };
+let state = { matches: [], progression: [], leaderboard: [], predictionStats: null, playerSheets: {} };
 let charts = {};
 const FIXED = {
   round32: [3, 38],
@@ -57,17 +57,19 @@ function resultBreakdown(){
   return out;
 }
 
-function csvUrl(sheetName) {
-  // Για το φύλλο ΑΠΟΤΕΛΕΣΜΑΤΑ χρησιμοποιούμε export CSV με gid.
-  // Το gviz/tq κάνει type inference στη στήλη E και μπορεί να πετάει τα X ως κενά
-  // επειδή η ίδια στήλη περιέχει κυρίως αριθμούς 1/2. Το export CSV κρατάει το κείμενο X.
+function csvUrls(sheetName) {
+  const urls = [];
+  // Για το φύλλο ΑΠΟΤΕΛΕΣΜΑΤΑ κρατάμε το gid export, επειδή στο group stage
+  // διαβάζει σωστά τα X. Αν όμως το tab ξαναδημιουργηθεί και αλλάξει gid,
+  // κάνουμε fallback στο όνομα φύλλου ώστε να μη σπάει όλη η σελίδα.
   if (sheetName === CONFIG.resultsSheet && CONFIG.resultsGid) {
     const params = new URLSearchParams({ format: 'csv', gid: CONFIG.resultsGid, cacheBust: Date.now().toString() });
-    return `https://docs.google.com/spreadsheets/d/${CONFIG.spreadsheetId}/export?${params.toString()}`;
+    urls.push(`https://docs.google.com/spreadsheets/d/${CONFIG.spreadsheetId}/export?${params.toString()}`);
   }
   const base = `https://docs.google.com/spreadsheets/d/${CONFIG.spreadsheetId}/gviz/tq`;
   const params = new URLSearchParams({ tqx: 'out:csv', sheet: sheetName, cacheBust: Date.now().toString() });
-  return `${base}?${params.toString()}`;
+  urls.push(`${base}?${params.toString()}`);
+  return urls;
 }
 
 function parseCsv(text) {
@@ -84,19 +86,45 @@ function parseCsv(text) {
 }
 
 async function fetchSheet(sheetName) {
-  const res = await fetch(csvUrl(sheetName), { cache: 'no-store' });
-  if (!res.ok) throw new Error(`Δεν μπόρεσα να διαβάσω το φύλλο «${sheetName}».`);
-  const text = await res.text();
-  if (text.includes('<!DOCTYPE html') || text.includes('<html')) throw new Error(`Το Google Sheet δεν επιστρέφει CSV για το φύλλο «${sheetName}».`);
-  return parseCsv(text);
+  let lastError = null;
+  for (const url of csvUrls(sheetName)) {
+    try {
+      const res = await fetch(url, { cache: 'no-store' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const text = await res.text();
+      if (text.includes('<!DOCTYPE html') || text.includes('<html')) throw new Error('HTML αντί για CSV');
+      return parseCsv(text);
+    } catch (err) {
+      lastError = err;
+    }
+  }
+  throw new Error(`Δεν μπόρεσα να διαβάσω το φύλλο «${sheetName}»${lastError ? ` (${lastError.message})` : ''}.`);
 }
 
+function progressionRound(rowNumber, slot) {
+  const s = norm(slot).replace(/\s+/g, '');
+  if (!s || s.includes('ΣΥΝΟΛΟ')) return '';
+  if (rowNumber >= 3 && rowNumber <= 38) return 'Στους 32';
+  if (rowNumber >= 40 && rowNumber <= 55) return 'Στους 16';
+  if (rowNumber >= 57 && rowNumber <= 64) return 'Στους 8';
+  if (rowNumber >= 66 && rowNumber <= 69) return 'Στους 4';
+  if (rowNumber >= 71 && rowNumber <= 72) return 'Μικρός τελικός';
+  if (rowNumber >= 74 && rowNumber <= 75) return 'Τελικός';
+  if (rowNumber === 76) return 'Νικητής μικρού τελικού';
+  if (rowNumber === 77) return 'Πρωταθλητής';
+  if (rowNumber === 78) return '1ος σκόρερ';
+  return '';
+}
 function parseResults(rows) {
   const matches = [];
+  const progression = [];
   for (let i = 2; i < rows.length; i++) {
     const r = rows[i] || [];
-    const date = clean(r[0]), time = clean(r[1]), group = clean(r[2]), match = clean(r[3]), result = clean(r[4]), slot = clean(r[5]);
+    const rowNumber = i + 1;
+    const date = clean(r[0]), time = clean(r[1]), group = clean(r[2]), match = clean(r[3]), result = clean(r[4]), slot = clean(r[5]), qualified = clean(r[6]);
     if (match && !match.toUpperCase().includes('ΒΑΘΜΟΛΟΓΙΑ')) matches.push({ date, time, group, match, result, slot });
+    const round = progressionRound(rowNumber, slot);
+    if (round && qualified) progression.push({ round, slot, team: qualified, row: rowNumber });
   }
   let leaderboard = [];
   for (let i = 1; i < rows.length; i++) {
@@ -112,7 +140,7 @@ function parseResults(rows) {
     }
   }
   leaderboard = leaderboard.filter(x => CONFIG.players.includes(x.player)).sort((a, b) => a.rank - b.rank || b.points - a.points || a.player.localeCompare(b.player, 'el'));
-  return { matches, leaderboard };
+  return { matches, progression, leaderboard };
 }
 
 function normalizeScorerName(v){
@@ -243,11 +271,12 @@ function renderCards() {
   const top = state.leaderboard[0];
   const maxPoints = Math.max(0, ...state.leaderboard.map(x => x.points));
   const groups = new Set(state.matches.map(m => m.group).filter(Boolean)).size;
+  const qualified = state.progression?.filter(x => x.round === 'Στους 32').length || 0;
   if ($('sidePlayed')) $('sidePlayed').textContent = played;
   $('summaryCards').innerHTML = [
     ['Παίκτες', state.leaderboard.length || CONFIG.players.length],
     ['Αγώνες με αποτέλεσμα', played],
-    ['Όμιλοι', groups],
+    ['Προκρίσεις στους 32', `${qualified}/32`],
     ['Πρώτος', top ? `${top.player} · ${maxPoints}` : '-']
   ].map(([label, value]) => `<div class="card"><div class="label">${label}</div><div class="value">${esc(value)}</div></div>`).join('');
 }
@@ -289,9 +318,11 @@ function renderQuickStats(){
   const tiedFirst = state.leaderboard.filter(x => top && x.points === top.points).length;
   const stats = state.predictionStats;
   const favChampion = stats ? topEntries(stats.maps.champions, 1)[0] : null;
+  const p32 = state.progression?.filter(x => x.round === 'Στους 32').length || 0;
+  const p16 = state.progression?.filter(x => x.round === 'Στους 16').length || 0;
   $('quickStats').innerHTML = [
     ['Αγώνες', `${played}/${state.matches.length}`],
-    ['Αποτελέσματα', `1:${rb['1']} · X:${rb['X']} · 2:${rb['2']}`],
+    ['Προκρίσεις', `32: ${p32}/32 · 16: ${p16}/16`],
     ['Ισοβαθμία στην κορυφή', tiedFirst || '-'],
     ['Δημοφιλής πρωταθλήτρια', favChampion ? `${favChampion[0]} (${favChampion[1]})` : 'Φόρτωση…']
   ].map(([label,value])=>`<div class="stat-line"><span>${esc(label)}</span><strong>${esc(value)}</strong></div>`).join('');
@@ -359,7 +390,7 @@ function renderUpcomingPicks(){
   const unplayed = state.matches.filter(m => !isPlayedResult(m.result)).slice(0, 18);
   const loaded = CONFIG.players.filter(p => state.playerSheets[p]).length;
   if (status) status.textContent = loaded ? `Δείχνει τα επόμενα ${unplayed.length} ματς της Α’ φάσης · φορτώθηκαν ${loaded}/${CONFIG.players.length} παίκτες.` : 'Φορτώνονται τα φύλλα παικτών για να εμφανιστούν οι επιλογές 1/X/2.';
-  if (!unplayed.length) { el.innerHTML = '<div class="empty-state">Δεν υπάρχουν επόμενα ματς χωρίς αποτέλεσμα.</div>'; return; }
+  if (!unplayed.length) { el.innerHTML = '<div class="empty-state">Η φάση των ομίλων ολοκληρώθηκε. Από εδώ και πέρα τα πραγματικά αποτελέσματα προκρίσεων διαβάζονται από τη στήλη G του φύλλου ΑΠΟΤΕΛΕΣΜΑΤΑ.</div>'; return; }
   if (!loaded) {
     el.innerHTML = unplayed.slice(0,6).map(m => `<div class="upcoming-card skeleton"><div><div class="match-meta">${esc(m.date)} · ${esc(m.group || '-')}</div><div class="match-title">${esc(m.match)}</div></div><div class="empty-state">Φόρτωση επιλογών…</div></div>`).join('');
     return;
@@ -387,8 +418,17 @@ function openUpcomingPickModal(idx, outcome){
   openModal(`<p class="small-title">Upcoming Picks</p><h2>${esc(match.match)}</h2><p class="modal-sub">${esc(label)} · ${players.length}/${CONFIG.players.length} παίκτες</p><div class="picker-grid">${players.map(p => `<button onclick="closeModal();selectPlayer('${esc(p)}')">${esc(p)}</button>`).join('') || '<em>Δεν υπάρχει παίκτης σε αυτή την επιλογή.</em>'}</div>`);
 }
 window.openUpcomingPickModal = openUpcomingPickModal;
+function renderProgressionResults(){
+  const items = (state.progression || []).slice(-12).reverse();
+  if (!items.length) {
+    $('recentMatches').innerHTML = '<div class="empty-state">Δεν έχουν καταχωριστεί ακόμα προκρίσεις στη στήλη G.</div>';
+    return;
+  }
+  $('recentMatches').innerHTML = items.map(x => `<div class="match-card"><div class="match-meta">${esc(x.round)} · ${esc(x.slot || '')}</div><div><div class="match-title">${esc(x.team)}</div><small>καταχώριση από στήλη G</small></div><div class="score-pill">✓</div></div>`).join('');
+}
 function renderRecentMatches(){
   const recent = state.matches.filter(m => isPlayedResult(m.result)).slice(-6).reverse();
+  if (!recent.length && (state.progression || []).length) { renderProgressionResults(); return; }
   $('recentMatches').innerHTML = recent.map((m,idx) => {
     const hasSheets = Object.keys(state.playerSheets).length > 0;
     const ins = hasSheets ? matchInsights(m) : { exact:[], points:[] };
@@ -571,7 +611,7 @@ async function load() {
     renderCards(); renderPodium(); renderTopTen(); renderMovers(); renderLeaderboard(); renderGroupFilter(); renderMatches(); renderPlayerSelect(); renderQuickStats(); renderUpcomingPicks();
     $('status').textContent = `Τελευταία ενημέρωση: ${new Date().toLocaleString('el-GR')}`;
     loadPredictionStats(false).catch(err => { $('statsStatus').innerHTML = `<span class="warn">Δεν φορτώθηκαν τα στατιστικά: ${esc(err.message)}</span>`; });
-  } catch (err) { $('status').innerHTML = `<span class="warn">${esc(err.message)}</span><br>Πιθανή αιτία: το Google Sheet δεν έχει γίνει Publish to web ή το φύλλο «ΑΠΟΤΕΛΕΣΜΑΤΑ» δεν είναι δημοσιευμένο.`; }
+  } catch (err) { $('status').innerHTML = `<span class="warn">${esc(err.message)}</span><br>Πιθανή αιτία: το Google Sheet δεν είναι δημοσιευμένο, άλλαξε το gid του φύλλου «ΑΠΟΤΕΛΕΣΜΑΤΑ», ή το φύλλο δεν επιστρέφει CSV.`; }
 }
 
 $('refreshBtn').addEventListener('click', () => { state.predictionStats = null; load(); });
