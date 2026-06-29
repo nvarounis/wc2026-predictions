@@ -221,12 +221,18 @@ function parsePlayerAnalytics(player, rows){
   const champion = valueByExactLabel(rows, ['ΝΙΚΗΤΗΣ']) || eCell(rows, FIXED.champion);
   const scorer = valueByExactLabel(rows, ['1ος ΣΚΟΡΕΡ', '1ΟΣ ΣΚΟΡΕΡ']) || eCell(rows, FIXED.scorer);
   const thirdPlace = valueByExactLabel(rows, ['ΝΙΚΗΤΗΣ ΜΙΚΡΟΥ ΤΕΛΙΚΟΥ']) || eCell(rows, FIXED.thirdPlace);
-  const finalists = valuesByLabelPrefix(rows, ['ΝΗΜ']).slice(0,2);
-  const semiWinners = valuesByLabelPrefix(rows, ['ΗΗ']).slice(0,2);
-  const semiFinalists = valuesByLabelPrefix(rows, ['ΠΡΟ']).slice(0,4);
-  const quarterFinalists = valuesByLabelPrefix(rows, ['16.']).slice(0,8);
-  const round16 = valuesByLabelPrefix(rows, ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII', 'XIII', 'XIV', 'XV', 'XVI']).slice(0,16);
-  const round32 = valuesE(rows, ...FIXED.round32);
+  let finalists = valuesByLabelPrefix(rows, ['ΝΗΜ']).slice(0,2);
+  if (finalists.length < 2) finalists = valuesE(rows, ...FIXED.finalTeams).slice(0,2);
+  let semiWinners = valuesByLabelPrefix(rows, ['ΗΗ']).slice(0,2);
+  if (semiWinners.length < 2) semiWinners = valuesE(rows, ...FIXED.semiWinners).slice(0,2);
+  let semiFinalists = valuesByLabelPrefix(rows, ['ΠΡΟ']).slice(0,4);
+  if (semiFinalists.length < 4) semiFinalists = valuesE(rows, ...FIXED.semis).slice(0,4);
+  let quarterFinalists = valuesByLabelPrefix(rows, ['16.']).slice(0,8);
+  if (quarterFinalists.length < 8) quarterFinalists = valuesE(rows, ...FIXED.quarters).slice(0,8);
+  // Για τη φάση των 16 προτιμάμε τις σταθερές γραμμές 40:55.
+  // Έτσι δεν επηρεάζεται από Latin/Greek roman labels όπως I/Ι, VI/VΙ κ.λπ.
+  const round16 = valuesE(rows, ...FIXED.round16).slice(0,16);
+  const round32 = valuesE(rows, ...FIXED.round32).slice(0,36).filter(x => validPick(x) && clean(x) !== '-');
   const finalPair = finalists.length >= 2 ? finalPairLabel(finalists[0], finalists[1]) : '';
   return { player, champion, scorer, round32, round16, quarterFinalists, semiFinalists, semiWinners, finalists, finalPair, thirdPlace };
 }
@@ -270,15 +276,21 @@ function renderCards() {
   const played = rb.played;
   const top = state.leaderboard[0];
   const maxPoints = Math.max(0, ...state.leaderboard.map(x => x.points));
-  const groups = new Set(state.matches.map(m => m.group).filter(Boolean)).size;
-  const qualified = state.progression?.filter(x => x.round === 'Στους 32').length || 0;
+  const qualified32 = state.progression?.filter(x => x.round === 'Στους 32').length || 0;
+  const qualified16 = state.progression?.filter(x => x.round === 'Στους 16').length || 0;
   if ($('sidePlayed')) $('sidePlayed').textContent = played;
-  $('summaryCards').innerHTML = [
+  const cards = (!played && (qualified32 || qualified16)) ? [
+    ['Παίκτες', state.leaderboard.length || CONFIG.players.length],
+    ['Προκρίσεις στους 32', `${qualified32}/32`],
+    ['Προκρίσεις στους 16', `${qualified16}/16`],
+    ['Πρώτος', top ? `${top.player} · ${maxPoints}` : '-']
+  ] : [
     ['Παίκτες', state.leaderboard.length || CONFIG.players.length],
     ['Αγώνες με αποτέλεσμα', played],
-    ['Προκρίσεις στους 32', `${qualified}/32`],
+    ['Προκρίσεις στους 32', `${qualified32}/32`],
     ['Πρώτος', top ? `${top.player} · ${maxPoints}` : '-']
-  ].map(([label, value]) => `<div class="card"><div class="label">${label}</div><div class="value">${esc(value)}</div></div>`).join('');
+  ];
+  $('summaryCards').innerHTML = cards.map(([label, value]) => `<div class="card"><div class="label">${label}</div><div class="value">${esc(value)}</div></div>`).join('');
 }
 
 function podiumCard(x, place, cls='') {
@@ -383,14 +395,144 @@ function upcomingPickGroups(match){
   }
   return groups;
 }
+
+function roundMeta(round){
+  const meta = {
+    'Στους 32': { key:'round32', total:32, label:'Στους 32', noun:'ομάδες που πέρασαν στους 32' },
+    'Στους 16': { key:'round16', total:16, label:'Στους 16', noun:'ομάδες που πέρασαν στους 16' },
+    'Στους 8': { key:'quarters', total:8, label:'Στους 8', noun:'ομάδες που πέρασαν στους 8' },
+    'Στους 4': { key:'semis', total:4, label:'Στους 4', noun:'ομάδες που πέρασαν στους 4' },
+    'Τελικός': { key:'finalists', total:2, label:'Τελικό', noun:'ομάδες του τελικού' },
+    'Πρωταθλητής': { key:'champions', total:1, label:'Πρωταθλητής', noun:'πρωταθλήτρια ομάδα' }
+  };
+  return meta[round] || null;
+}
+function activeProgressionRound(){
+  // Δείχνουμε το πιο προχωρημένο στάδιο που έχει πραγματικές καταχωρίσεις στη στήλη G.
+  const order = ['Πρωταθλητής', 'Τελικός', 'Στους 4', 'Στους 8', 'Στους 16', 'Στους 32'];
+  for (const r of order) if ((state.progression || []).some(x => x.round === r)) return r;
+  return '';
+}
+function getPickPlayersForTeam(type, team){
+  const map = state.predictionStats?.picks?.[type];
+  if (!map) return [];
+  const target = norm(team);
+  for (const [label, players] of map.entries()) if (norm(label) === target) return [...players].sort((a,b)=>a.localeCompare(b,'el'));
+  return [];
+}
+function renderQualificationPicks(round){
+  const el = $('upcomingPicks');
+  if (!el) return;
+  const status = $('upcomingStatus');
+  const meta = roundMeta(round);
+  const actual = (state.progression || []).filter(x => x.round === round && validPick(x.team));
+  const loaded = state.predictionStats?.loadedPlayers || CONFIG.players.filter(p => state.playerSheets[p]).length;
+  if (!meta || !actual.length) return false;
+  if (status) status.textContent = `Καταχωρισμένες προκρίσεις ${meta.label}: ${actual.length}/${meta.total}. ${loaded ? `Φορτώθηκαν ${loaded}/${CONFIG.players.length} παίκτες.` : 'Φορτώνονται τα φύλλα παικτών…'}`;
+  if (!state.predictionStats) {
+    el.innerHTML = actual.slice(0, meta.total).map(x => `<div class="upcoming-card skeleton"><div class="upcoming-head"><div><div class="match-meta">${esc(meta.label)} · ${esc(x.slot || '')}</div><div class="match-title">${esc(x.team)}</div></div><span class="upcoming-slot">στήλη G</span></div><div class="empty-state">Φόρτωση παικτών…</div></div>`).join('');
+    return true;
+  }
+  const cards = actual.slice(0, meta.total).map(x => ({...x, players:getPickPlayersForTeam(meta.key, x.team)}));
+  window.__qualificationCards = cards;
+  const max = Math.max(1, ...cards.map(x => x.players.length));
+  el.innerHTML = `<div class="empty-state phase-note">Δεν υπάρχουν πλέον επόμενα ματς από τη φάση των ομίλων. Εδώ εμφανίζονται οι πραγματικές προκρίσεις από τη στήλη G και πόσοι παίκτες τις είχαν προβλέψει.</div>` +
+    cards.map((x, idx) => {
+      const count = x.players.length;
+      const width = Math.max(5, count / max * 100);
+      return `<div class="upcoming-card"><div class="upcoming-head"><div><div class="match-meta">${esc(meta.label)} · ${esc(x.slot || '')}</div><div class="match-title">${esc(x.team)}</div></div><span class="upcoming-slot">${count}/${loaded}</span></div><button class="pick-option wide" onclick="openQualificationModal(${idx})"><div class="pick-option-top"><b>Το είχαν προβλέψει</b><span>${count}/${loaded}</span></div><div class="bar-track"><div class="bar-fill" style="width:${width}%"></div></div></button></div>`;
+    }).join('');
+  return true;
+}
+function openQualificationModal(idx){
+  const item = (window.__qualificationCards || [])[idx];
+  if (!item) return;
+  const round = item.round;
+  const meta = roundMeta(round) || { label:round };
+  const players = item.players || [];
+  const missed = CONFIG.players.filter(p => !players.includes(p)).sort((a,b)=>a.localeCompare(b,'el'));
+  openModal(`<p class="small-title">Προκρίσεις ${esc(meta.label)}</p><h2>${esc(item.team)}</h2><p class="modal-sub">${players.length}/${CONFIG.players.length} παίκτες το είχαν προβλέψει</p><h3>Το είχαν</h3><div class="picker-grid">${players.map(p => `<button onclick="closeModal();selectPlayer('${esc(p)}')">${esc(p)}</button>`).join('') || '<em>Κανένας παίκτης.</em>'}</div><h3>Δεν το είχαν</h3><div class="picker-grid muted-grid">${missed.map(p => `<button onclick="closeModal();selectPlayer('${esc(p)}')">${esc(p)}</button>`).join('')}</div>`);
+}
+window.openQualificationModal = openQualificationModal;
+
+
+function nextRoundMeta(round){
+  const meta = {
+    'Στους 32': { pickType:'round16', matchLabel:'Φάση των 32', targetLabel:'Στους 16', verb:'στους 16' },
+    'Στους 16': { pickType:'quarters', matchLabel:'Φάση των 16', targetLabel:'Στους 8', verb:'στους 8' },
+    'Στους 8': { pickType:'semis', matchLabel:'Προημιτελικά', targetLabel:'Στους 4', verb:'στους 4' },
+    'Στους 4': { pickType:'finalists', matchLabel:'Ημιτελικά', targetLabel:'Τελικό', verb:'στον τελικό' },
+    'Τελικός': { pickType:'champions', matchLabel:'Τελικός', targetLabel:'Πρωταθλητής', verb:'πρωταθλήτρια' }
+  };
+  return meta[round] || null;
+}
+function buildKnockoutFixtures(round){
+  const meta = nextRoundMeta(round);
+  if (!meta) return [];
+  const teams = (state.progression || [])
+    .filter(x => x.round === round && validPick(x.team))
+    .sort((a,b) => (Number(a.row)||0) - (Number(b.row)||0));
+  const fixtures = [];
+  for (let i = 0; i < teams.length; i += 2) {
+    const a = teams[i];
+    const b = teams[i + 1];
+    if (a || b) fixtures.push({ round, meta, slot:`${clean(a?.slot || '')}${b?.slot ? ' / ' + clean(b.slot) : ''}`, teamA:a?.team || '', teamB:b?.team || '', rowA:a?.row || '', rowB:b?.row || '' });
+  }
+  return fixtures;
+}
+function renderKnockoutFixtures(round){
+  const el = $('upcomingPicks');
+  if (!el) return false;
+  const status = $('upcomingStatus');
+  const meta = nextRoundMeta(round);
+  if (!meta) return false;
+  const fixtures = buildKnockoutFixtures(round);
+  if (!fixtures.length) return false;
+  const loaded = state.predictionStats?.loadedPlayers || CONFIG.players.filter(p => state.playerSheets[p]).length;
+  if (status) status.textContent = `${meta.matchLabel}: ${fixtures.length} ζευγάρια από τη στήλη G. ${loaded ? `Φορτώθηκαν ${loaded}/${CONFIG.players.length} παίκτες.` : 'Φορτώνονται τα φύλλα παικτών…'}`;
+  if (!state.predictionStats) {
+    el.innerHTML = fixtures.slice(0, 8).map(f => `<div class="upcoming-card skeleton"><div class="upcoming-head"><div><div class="match-meta">${esc(meta.matchLabel)} · ${esc(f.slot)}</div><div class="match-title">${esc(f.teamA || 'TBC')} — ${esc(f.teamB || 'TBC')}</div></div><span class="upcoming-slot">στήλη G</span></div><div class="empty-state">Φόρτωση παικτών…</div></div>`).join('');
+    return true;
+  }
+  const cards = fixtures.map(f => {
+    const aPlayers = f.teamA ? getPickPlayersForTeam(meta.pickType, f.teamA) : [];
+    const bPlayers = f.teamB ? getPickPlayersForTeam(meta.pickType, f.teamB) : [];
+    return {...f, aPlayers, bPlayers};
+  });
+  window.__knockoutFixtures = cards;
+  el.innerHTML = `<div class="empty-state phase-note">Τα επόμενα ζευγάρια δημιουργούνται από τις ομάδες που είναι ήδη γραμμένες στη στήλη G του φύλλου ΑΠΟΤΕΛΕΣΜΑΤΑ. Για επίσημες ώρες/γήπεδα, δες το <a href="https://www.fifa.com/en/tournaments/mens/worldcup/canadamexicousa2026/scores-fixtures?country=GR&wtw-filter=ALL" target="_blank" rel="noopener">πρόγραμμα της FIFA</a>.</div>` +
+    cards.map((f, idx) => {
+      const max = Math.max(1, f.aPlayers.length, f.bPlayers.length);
+      const option = (side, team, players) => {
+        const count = players.length;
+        const width = Math.max(5, count / max * 100);
+        return `<button class="pick-option" onclick="openKnockoutFixtureModal(${idx},'${side}')"><div class="pick-option-top"><b>${esc(team || 'TBC')}</b><span>${count}/${loaded}</span></div><small>το έχουν ${esc(meta.verb)}</small><div class="bar-track"><div class="bar-fill" style="width:${width}%"></div></div></button>`;
+      };
+      return `<div class="upcoming-card"><div class="upcoming-head"><div><div class="match-meta">${esc(meta.matchLabel)} · ${esc(f.slot)}</div><div class="match-title">${esc(f.teamA || 'TBC')} — ${esc(f.teamB || 'TBC')}</div></div><span class="upcoming-slot">${esc(meta.targetLabel)}</span></div><div class="pick-options">${option('A', f.teamA, f.aPlayers)}${option('B', f.teamB, f.bPlayers)}</div></div>`;
+    }).join('');
+  return true;
+}
+function openKnockoutFixtureModal(idx, side){
+  const item = (window.__knockoutFixtures || [])[idx];
+  if (!item) return;
+  const team = side === 'A' ? item.teamA : item.teamB;
+  const players = side === 'A' ? item.aPlayers : item.bPlayers;
+  const missed = CONFIG.players.filter(p => !players.includes(p)).sort((a,b)=>a.localeCompare(b,'el'));
+  openModal(`<p class="small-title">${esc(item.meta.matchLabel)}</p><h2>${esc(item.teamA || 'TBC')} — ${esc(item.teamB || 'TBC')}</h2><p class="modal-sub">${esc(team)} · ${players.length}/${CONFIG.players.length} παίκτες το έχουν ${esc(item.meta.verb)}</p><h3>Το έχουν</h3><div class="picker-grid">${players.map(p => `<button onclick="closeModal();selectPlayer('${esc(p)}')">${esc(p)}</button>`).join('') || '<em>Κανένας παίκτης.</em>'}</div><h3>Δεν το έχουν</h3><div class="picker-grid muted-grid">${missed.map(p => `<button onclick="closeModal();selectPlayer('${esc(p)}')">${esc(p)}</button>`).join('')}</div>`);
+}
+window.openKnockoutFixtureModal = openKnockoutFixtureModal;
+
 function renderUpcomingPicks(){
   const el = $('upcomingPicks');
   if (!el) return;
   const status = $('upcomingStatus');
+  const activeRound = activeProgressionRound();
+  if (activeRound && renderKnockoutFixtures(activeRound)) return;
+  if (activeRound && renderQualificationPicks(activeRound)) return;
   const unplayed = state.matches.filter(m => !isPlayedResult(m.result)).slice(0, 18);
   const loaded = CONFIG.players.filter(p => state.playerSheets[p]).length;
   if (status) status.textContent = loaded ? `Δείχνει τα επόμενα ${unplayed.length} ματς της Α’ φάσης · φορτώθηκαν ${loaded}/${CONFIG.players.length} παίκτες.` : 'Φορτώνονται τα φύλλα παικτών για να εμφανιστούν οι επιλογές 1/X/2.';
-  if (!unplayed.length) { el.innerHTML = '<div class="empty-state">Η φάση των ομίλων ολοκληρώθηκε. Από εδώ και πέρα τα πραγματικά αποτελέσματα προκρίσεων διαβάζονται από τη στήλη G του φύλλου ΑΠΟΤΕΛΕΣΜΑΤΑ.</div>'; return; }
+  if (!unplayed.length) { el.innerHTML = '<div class="empty-state">Δεν υπάρχουν επόμενα ματς για εμφάνιση. Μόλις συμπληρωθούν προκρίσεις στη στήλη G του φύλλου ΑΠΟΤΕΛΕΣΜΑΤΑ, θα εμφανιστούν εδώ.</div>'; return; }
   if (!loaded) {
     el.innerHTML = unplayed.slice(0,6).map(m => `<div class="upcoming-card skeleton"><div><div class="match-meta">${esc(m.date)} · ${esc(m.group || '-')}</div><div class="match-title">${esc(m.match)}</div></div><div class="empty-state">Φόρτωση επιλογών…</div></div>`).join('');
     return;
